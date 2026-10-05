@@ -57,7 +57,7 @@ jobs:
         run: |
           test '${{ steps.setup.outputs.version }}' = 'v3.2.0'
           test "${PERL5LIB-}" = "$EXPECTED_PERL5LIB"
-          SETUP_MINIL_BIN="$(dirname "$(command -v minil)")" ./test/smoke.sh
+          SETUP_MINIL_BIN="$(dirname "$(command -v minil)")" ./t/smoke.sh
 
           GITHUB_OUTPUT="$RUNNER_TEMP/setup-minil-output" ./scripts/setup-minil
           grep -qx 'resolution-mode=${{ matrix.resolution }}' "$RUNNER_TEMP/setup-minil-output"

@@ -31,7 +31,7 @@ else
 fi
 export PATH="$bin_path:$PATH"
 "$bin_path/minil" --version | grep -Fq "${test_version#v}"
-cp -R "$ROOT/test/fixtures/minimal-dist" "$temp_root/minimal-dist"
+cp -R "$ROOT/t/fixtures/minimal-dist" "$temp_root/minimal-dist"
 cd "$temp_root/minimal-dist"
 git init --quiet
 git config user.name "setup-minil test"
