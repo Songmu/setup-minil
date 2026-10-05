@@ -1,5 +1,4 @@
 name: Update snapshots
-
 on:
   workflow_dispatch:
     inputs:
@@ -7,91 +6,64 @@ on:
         description: Exact Minilla version (vX.Y.Z or X.Y.Z)
         required: true
         default: v3.2.0
-
 concurrency:
   group: update-snapshots-${{ inputs.version }}
   cancel-in-progress: false
-
 permissions:
-  contents: write
-  pull-requests: write
-
+  contents: read
 jobs:
   generate:
-    permissions:
-      contents: read
     strategy:
       fail-fast: false
       matrix:
-        os:
-          - ubuntu-latest
-          - macos-latest
+        os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ github.event.repository.default_branch }}
-
-      - name: Generate and verify snapshot
-        id: snapshot
-        env:
-          VERSION: ${{ inputs.version }}
-        shell: bash
+      - env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
-          set -euo pipefail
-          ./scripts/update-snapshots "$VERSION"
-          INPUT_VERSION="$VERSION" SETUP_MINIL_INTEGRATION=true ./test/smoke.sh
-
-      - name: Package snapshot
-        shell: bash
-        run: |
-          set -euo pipefail
-          tar -czf "$RUNNER_TEMP/snapshot.tgz" \
-            "snapshots/${{ steps.snapshot.outputs.snapshot-path }}"
-
+          VERSION="${INPUT_VERSION#v}"
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          rm -rf -- "snapshots/v$VERSION"
+          ./scripts/update-snapshots "$INPUT_VERSION"
+          make integration
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: snapshot-${{ runner.os }}-${{ runner.arch }}
-          path: ${{ runner.temp }}/snapshot.tgz
+          path: snapshots
           if-no-files-found: error
-
   create-pull-request:
     needs: generate
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ github.event.repository.default_branch }}
-
+      - env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          VERSION="${VERSION#v}"
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          rm -rf -- "snapshots/v$VERSION"
       - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
         with:
           pattern: snapshot-*
-          path: ${{ runner.temp }}/snapshots
-
-      - name: Merge generated snapshots
-        env:
-          VERSION: ${{ inputs.version }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          VERSION="${VERSION#v}"
-          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          VERSION="v$VERSION"
-          rm -rf -- "snapshots/$VERSION"
-          find "$RUNNER_TEMP/snapshots" -name snapshot.tgz -type f -print0 |
-            while IFS= read -r -d '' archive; do
-              tar -xzf "$archive"
-            done
-          ./scripts/check-snapshots
-
+          path: snapshots
+          merge-multiple: true
       - name: Create Draft PR
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
-        shell: bash
         run: |
-          set -euo pipefail
-          if git diff --quiet -- snapshots; then
+          ./scripts/check-snapshots
+          git add snapshots
+          if git diff --cached --quiet -- snapshots; then
             echo "Snapshots are already current."
             exit 0
           fi
@@ -99,12 +71,8 @@ jobs:
           git switch -c "$branch"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add snapshots
           git commit -m "Update Minilla $VERSION snapshots"
           git push origin "$branch"
-          gh pr create \
-            --draft \
-            --title "Update Minilla $VERSION snapshots" \
+          gh pr create --draft --title "Update Minilla $VERSION snapshots" \
             --body "Generated on GitHub-hosted Ubuntu and macOS runners using each image's system Perl." \
-            --base "${{ github.event.repository.default_branch }}" \
-            --head "$branch"
+            --base "${{ github.event.repository.default_branch }}" --head "$branch"

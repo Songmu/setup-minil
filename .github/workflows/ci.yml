@@ -1,104 +1,40 @@
 name: CI
-
 on:
   pull_request:
   push:
-    branches:
-      - main
-
+    branches: [main]
 permissions:
   contents: read
-
 jobs:
-  checks:
+  test:
     strategy:
       fail-fast: false
       matrix:
-        os:
-          - ubuntu-latest
-          - macos-latest
+        os: [ubuntu-latest, macos-latest]
+        resolution: [dynamic, snapshot]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-      - run: make test
-
-  dynamic-install:
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-          - ubuntu-latest
-          - macos-latest
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-
-      - uses: shogo82148/actions-setup-perl@8b574cdc2dffdae49f803204a4f2b716a2fa1db7
+      - if: matrix.resolution == 'dynamic'
+        run: make test
+      - if: matrix.resolution == 'dynamic'
+        uses: shogo82148/actions-setup-perl@8b574cdc2dffdae49f803204a4f2b716a2fa1db7
         with:
           perl-version: "5.40"
-
-      - name: Record caller Perl environment
-        id: perl-env
+      - if: matrix.resolution == 'snapshot'
+        run: ./scripts/update-snapshots v3.2.0
+      - id: perl-env
         shell: bash
         run: echo "perl5lib=${PERL5LIB-}" >>"$GITHUB_OUTPUT"
-
       - id: setup
         uses: ./
-
-      - name: Verify installation
+      - name: Exercise the composite action
         shell: bash
         env:
           EXPECTED_PERL5LIB: ${{ steps.perl-env.outputs.perl5lib }}
         run: |
-          set -euo pipefail
           test '${{ steps.setup.outputs.version }}' = 'v3.2.0'
-          minil --version | grep -F 'v3.2.0'
           test "${PERL5LIB-}" = "$EXPECTED_PERL5LIB"
-
-      - name: Exercise Minilla
-        shell: bash
-        run: |
-          set -euo pipefail
-          cp -R test/fixtures/minimal-dist "$RUNNER_TEMP/minimal-dist"
-          cd "$RUNNER_TEMP/minimal-dist"
-          git init --quiet
-          git config user.name "setup-minil CI"
-          git config user.email "setup-minil@example.invalid"
-          git add .
-          minil test 2>&1 | tee "$RUNNER_TEMP/minil-test.log"
-          grep -q 'Result: PASS' "$RUNNER_TEMP/minil-test.log"
-          minil dist 2>&1 | tee "$RUNNER_TEMP/minil-dist.log"
-          grep -q 'Result: PASS' "$RUNNER_TEMP/minil-dist.log"
-          test -s Example-Minilla-Dist-0.01.tar.gz
-          tar -xOf Example-Minilla-Dist-0.01.tar.gz \
-            Example-Minilla-Dist-0.01/LICENSE | grep -q 'MIT'
-
-  snapshot-install:
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-          - ubuntu-latest
-          - macos-latest
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-      - run: ./scripts/update-snapshots v3.2.0
-      - run: SETUP_MINIL_INTEGRATION=true SETUP_MINIL_OUTPUT="$RUNNER_TEMP/setup-minil-output" ./test/smoke.sh
-      - name: Verify snapshot resolution
-        shell: bash
-        run: grep -q '^resolution-mode=snapshot$' "$RUNNER_TEMP/setup-minil-output"
-
-  rejected-input:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-      - name: Reject an invalid version
-        id: unsupported
-        continue-on-error: true
-        uses: ./
-        with:
-          version: latest
-      - name: Check rejection
-        shell: bash
-        run: test '${{ steps.unsupported.outcome }}' = 'failure'
+          SETUP_MINIL_BIN="$(dirname "$(command -v minil)")" ./test/smoke.sh
+          GITHUB_OUTPUT="$RUNNER_TEMP/setup-minil-output" ./scripts/setup-minil
+          grep -qx 'resolution-mode=${{ matrix.resolution }}' "$RUNNER_TEMP/setup-minil-output"

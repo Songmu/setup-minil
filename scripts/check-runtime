@@ -1,43 +1,14 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/usr/bin/env perl
+use strict;
+use warnings;
+use FindBin;
+use lib $FindBin::Bin;
+use SetupMinil;
 
-readonly ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
-
-sha256_file() {
-  if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum "$1" | awk '{print $1}'
-  else
-    shasum -a 256 "$1" | awk '{print $1}'
-  fi
-}
-
-expected_cpm="$(perl -MJSON::PP -0777 -e 'print decode_json(<>)->{cpm}{sha256}' "$ROOT/runtime/manifest.json")"
-actual_cpm="$(sha256_file "$ROOT/runtime/cpm")"
-[[ "$actual_cpm" == "$expected_cpm" ]] || {
-  printf 'runtime/cpm digest mismatch: expected %s, got %s\n' "$expected_cpm" "$actual_cpm" >&2
-  exit 1
-}
-
-expected_cpanfile="$(perl -MJSON::PP -0777 -e 'print decode_json(<>)->{carton_bootstrap}{cpanfile_sha256}' "$ROOT/runtime/manifest.json")"
-actual_cpanfile="$(sha256_file "$ROOT/runtime/cpanfile")"
-[[ "$actual_cpanfile" == "$expected_cpanfile" ]] || {
-  printf 'runtime/cpanfile digest mismatch: expected %s, got %s\n' "$expected_cpanfile" "$actual_cpanfile" >&2
-  exit 1
-}
-
-carton_version="$(perl -MJSON::PP -0777 -e 'print decode_json(<>)->{carton_bootstrap}{version}' "$ROOT/runtime/manifest.json")"
-grep -Fqx "requires 'Carton', '== $carton_version';" "$ROOT/runtime/cpanfile" || {
-  printf 'runtime/cpanfile does not exactly require Carton %s\n' "$carton_version" >&2
-  exit 1
-}
-
-[[ ! -e "$ROOT/runtime/lib" ]] || {
-  printf 'runtime/lib must not be committed; Carton is bootstrapped by cpm\n' >&2
-  exit 1
-}
-[[ ! -e "$ROOT/runtime/cpanfile.snapshot" ]] || {
-  printf 'runtime/cpanfile.snapshot cannot bootstrap its own Carton parser\n' >&2
-  exit 1
-}
-
-perl "$ROOT/runtime/cpm" --version >/dev/null
+my $manifest = decode_json(read_file("$SetupMinil::ROOT/runtime/manifest.json"));
+digest("$SetupMinil::ROOT/runtime/cpm") eq $manifest->{cpm}{sha256}
+    or die "runtime/cpm digest mismatch\n";
+read_file("$SetupMinil::ROOT/runtime/cpanfile") =~ /\Arequires 'Carton', '== v\d+\.\d+\.\d+';\n\z/
+    or die "runtime/cpanfile must contain an exact Carton requirement\n";
+!-e "$SetupMinil::ROOT/runtime/$_" or die "runtime/$_ must not be committed\n" for qw(lib cpanfile.snapshot);
+run_quiet($SetupMinil::PERL, "$SetupMinil::ROOT/runtime/cpm", '--version');

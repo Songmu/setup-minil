@@ -3,15 +3,11 @@
 check:
 	./scripts/check-runtime
 	./scripts/check-snapshots
-	for script in scripts/check-runtime scripts/setup-minil scripts/update-runtime scripts/update-snapshots test/*.sh; do \
-		bash -n "$$script" || exit; \
-	done
-	perl -c scripts/check-snapshots
+	for script in scripts/*; do perl -I scripts -c "$$script" || exit; done
+	for script in test/*.sh; do bash -n "$$script" || exit; done
 
 test: check
-	./test/smoke.sh
-	bash ./test/tool-cache.sh
-	bash ./test/snapshots.sh
+	./test/unit.t
 
 integration: check
-	SETUP_MINIL_INTEGRATION=true ./test/smoke.sh
+	./test/smoke.sh

@@ -1,279 +1,83 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/usr/bin/env perl
+use strict;
+use warnings;
+use FindBin;
+use lib $FindBin::Bin;
+use SetupMinil;
+use File::Basename qw(dirname);
+use File::Path qw(make_path remove_tree);
+use File::Temp ();
 
-readonly ACTION_PATH="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
-
-fail() {
-  printf 'setup-minil: %s\n' "$*" >&2
-  exit 1
+my $env = environment($ENV{INPUT_VERSION} || 'v3.2.0');
+my $version = $env->{minilla_version};
+my $snapshot = "$SetupMinil::ROOT/snapshots/" . snapshot_path($env);
+my $mode = -d $snapshot ? 'snapshot' : 'dynamic';
+if ($mode eq 'snapshot') {
+    check_snapshot($snapshot, $env);
+} else {
+    warn "::warning::setup-minil: no exact dependency snapshot for "
+        . join('-', @{$env}{qw(runner_os runner_arch perl_version perl_archname)})
+        . "; using dynamic resolution\n";
 }
-
-warning() {
-  printf '::warning::setup-minil: %s\n' "$*" >&2
-}
-
-write_output() {
-  local name="$1"
-  local value="$2"
-  if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
-    printf '%s=%s\n' "$name" "$value" >>"$GITHUB_OUTPUT"
-  else
-    printf '%s=%s\n' "$name" "$value"
-  fi
-}
-
-sha256_file() {
-  if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum "$1" | awk '{print $1}'
-  else
-    shasum -a 256 "$1" | awk '{print $1}'
-  fi
-}
-
-safe_path_component() {
-  printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -c 'A-Za-z0-9_.-' '_'
-}
-
-normalize_os() {
-  case "${RUNNER_OS:-$(uname -s)}" in
-    Linux) printf 'Linux' ;;
-    macOS|Darwin) printf 'macOS' ;;
-    *) fail "unsupported operating system: ${RUNNER_OS:-$(uname -s)}" ;;
-  esac
-}
-
-normalize_arch() {
-  local value="${RUNNER_ARCH:-$(uname -m)}"
-  case "$value" in
-    X64|x86_64|amd64) printf 'X64' ;;
-    ARM64|aarch64|arm64) printf 'ARM64' ;;
-    *) fail "unsupported architecture: $value" ;;
-  esac
-}
-
-snapshot_directory() {
-  local version="$1"
-  local runner_os="$2"
-  local runner_arch="$3"
-  local perl_version="$4"
-  local perl_archname="$5"
-  printf '%s/%s-%s-perl-%s-%s' \
-    "$version" \
-    "$(safe_path_component "$runner_os")" \
-    "$(safe_path_component "$runner_arch")" \
-    "$perl_version" \
-    "$(safe_path_component "$perl_archname")"
-}
-
-verify_snapshot_environment() {
-  local file="$1"
-  local version="$2"
-  local runner_os="$3"
-  local runner_arch="$4"
-  local perl_version="$5"
-  local perl_archname="$6"
-  perl -MJSON::PP -0777 -e '
-    my ($file, @pairs) = @ARGV;
-    open my $fh, "<", $file or die "$file: $!";
-    my $data = decode_json(do { local $/; <$fh> });
-    while (@pairs) {
-      my ($field, $expected) = splice @pairs, 0, 2;
-      die "$file: expected $field=$expected\n"
-        unless defined $data->{$field} && "$data->{$field}" eq "$expected";
+my $temp = $ENV{RUNNER_TEMP} || $ENV{TMPDIR} || '/tmp';
+make_path($temp);
+my $work = File::Temp->newdir('setup-minil-work.XXXXXX', DIR => $temp, CLEANUP => 1);
+write_file("$work/cpanfile", "requires 'Minilla', '== $version';\n"
+    . read_file("$SetupMinil::ROOT/runtime/minilla.cpanfile"));
+my $cache = ($ENV{RUNNER_TOOL_CACHE} || "$temp/setup-minil-tool-cache")
+    . "/minil/" . substr($version, 1) . '/' . lc($env->{runner_arch});
+my $identity = join "\n", $SetupMinil::PERL, @{$env}{qw(perl_version perl_archname runner_os runner_arch)},
+    $version, $mode, ($mode eq 'snapshot' ? digest("$snapshot/cpanfile.snapshot") : ''),
+    map { digest("$SetupMinil::ROOT/$_") }
+        qw(runtime/cpm runtime/cpanfile runtime/minilla.cpanfile scripts/setup-minil scripts/SetupMinil.pm);
+$identity .= "\n";
+my $reused = -f "$cache.complete" && -x "$cache/bin/minil" && -f "$cache/libexec/minil"
+    && -f "$cache/installation-id" && read_file("$cache/installation-id") eq $identity;
+if ($reused) {
+    print "setup-minil: reusing Tool Cache installation at $cache\n";
+} else {
+    warn "::warning::setup-minil: Tool Cache entry is incomplete or does not match the selected environment; reinstalling\n"
+        if -e $cache || -e "$cache.complete";
+    unlink "$cache.complete" or die "$cache.complete: $!\n" if -e "$cache.complete";
+    remove_tree($cache, { error => \my $errors });
+    die "cannot remove Tool Cache entry: $cache\n" if @$errors;
+    make_path(dirname($cache));
+    my $stage = File::Temp->newdir('.' . lc($env->{runner_arch}) . '.XXXXXX',
+        DIR => dirname($cache), CLEANUP => 1);
+    my @perl_args;
+    if ($mode eq 'snapshot') {
+        my $carton = "$work/carton";
+        cpm($carton, "$work/carton-cpm-home", [], "--cpanfile=$SetupMinil::ROOT/runtime/cpanfile");
+        run($SetupMinil::PERL, "-I$carton/lib/perl5", '-MCarton::Snapshot', '-e', '1');
+        @perl_args = ("-I$carton/lib/perl5");
     }
-  ' "$file" \
-    minilla_version "$version" \
-    runner_os "$runner_os" \
-    runner_arch "$runner_arch" \
-    perl_version "$perl_version" \
-    perl_archname "$perl_archname"
-}
-
-write_wrapper() {
-  local destination="$1"
-  local perl_exec="$2"
-  local escaped_perl="${perl_exec//\\/\\\\}"
-  escaped_perl="${escaped_perl//\"/\\\"}"
-  escaped_perl="${escaped_perl//\$/\\\$}"
-  escaped_perl="${escaped_perl//\`/\\\`}"
-  cat >"$destination" <<EOF
+    my @args = ("--cpanfile=$work/cpanfile", '--with-recommends',
+        '--top-level-phase=runtime', '--show-build-log-on-failure');
+    push @args, "--snapshot=$snapshot/cpanfile.snapshot", '--resolver=snapshot', '--no-default-resolvers'
+        if $mode eq 'snapshot';
+    cpm("$stage", "$work/cpm-home", \@perl_args, @args);
+    -f "$stage/bin/minil" or die "setup-minil: cpm completed without installing bin/minil\n";
+    make_path("$stage/libexec");
+    rename "$stage/bin/minil", "$stage/libexec/minil" or die "moving minil: $!\n";
+    my $perl = $SetupMinil::PERL;
+    $perl =~ s/([\\\"\$\`])/\\$1/g;
+    write_file("$stage/bin/minil", <<"SH");
 #!/bin/sh
 set -eu
-
-root="\$(
-  CDPATH= cd -- "\$(dirname -- "\$0")/.." &&
-  pwd
-)"
-
-exec "$escaped_perl" \\
-  -I"\$root/lib/perl5" \\
-  "\$root/libexec/minil" \\
-  "\$@"
-EOF
-  chmod +x "$destination"
+root="\$(CDPATH= cd -- "\$(dirname -- "\$0")/.." && pwd)"
+exec "$perl" -I"\$root/lib/perl5" "\$root/libexec/minil" "\$@"
+SH
+    chmod 0755, "$stage/bin/minil" or die "chmod minil: $!\n";
+    run_quiet("$stage/bin/minil", '--version');
+    write_file("$stage/installation-id", $identity);
+    rename "$stage", $cache or die "publishing installation: $!\n";
 }
-
-bootstrap_snapshot_runtime() {
-  local perl_exec="$1"
-  local work_root="$2"
-  local bootstrap_root="$work_root/carton"
-
-  (
-    cd -- "$work_root" || fail "cannot enter temporary working directory"
-    "$perl_exec" "$ACTION_PATH/runtime/cpm" install \
-      "--cpanfile=$ACTION_PATH/runtime/cpanfile" \
-      --mirror=https://cpan.metacpan.org/ \
-      "--local-lib-contained=$bootstrap_root" \
-      --exclude-vendor \
-      "--home=$work_root/carton-cpm-home" \
-      --no-prebuilt \
-      --no-test
-  ) ||
-    fail "Carton bootstrap installation failed"
-
-  "$perl_exec" "-I$bootstrap_root/lib/perl5" -MCarton::Snapshot -e 1 ||
-    fail "Carton::Snapshot bootstrap failed"
-  printf '%s' "$bootstrap_root/lib/perl5"
+run_quiet("$cache/bin/minil", '--version');
+write_file("$cache.complete", '') unless $reused;
+if ($ENV{GITHUB_PATH}) {
+    write_file($ENV{GITHUB_PATH}, "$cache/bin\n", '>>');
+} else {
+    print "Add $cache/bin to PATH\n";
 }
-
-activate_installation() {
-  "$cache_root/bin/minil" --version >/dev/null
-  if [[ -n "${GITHUB_PATH:-}" ]]; then
-    printf '%s\n' "$cache_root/bin" >>"$GITHUB_PATH"
-  else
-    printf 'Add %s/bin to PATH\n' "$cache_root"
-  fi
-  write_output version "$requested_version"
-  write_output resolution-mode "$resolution_mode"
-}
-
-work_root=""
-install_root=""
-
-cleanup() {
-  [[ -z "$work_root" ]] || rm -rf -- "$work_root"
-  [[ -z "$install_root" ]] || rm -rf -- "$install_root"
-}
-trap cleanup EXIT
-
-requested_version="${INPUT_VERSION:-v3.2.0}"
-distribution_version="${requested_version#v}"
-[[ "$distribution_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] ||
-  fail "version must use vX.Y.Z or X.Y.Z"
-requested_version="v$distribution_version"
-command -v perl >/dev/null 2>&1 || fail "perl was not found on PATH"
-
-perl_exec="$(perl -MCwd=abs_path -e 'print abs_path($^X)')"
-perl_version="$("$perl_exec" -MConfig -e 'print $Config{version}')"
-perl_archname="$("$perl_exec" -MConfig -e 'print $Config{archname}')"
-"$perl_exec" -e 'exit($] >= 5.024 ? 0 : 1)' ||
-  fail "cpm v1 requires Perl 5.24 or later; selected Perl is $perl_version"
-
-runner_os="$(normalize_os)"
-runner_arch="$(normalize_arch)"
-
-snapshot_relative="$(snapshot_directory \
-  "$requested_version" "$runner_os" "$runner_arch" "$perl_version" "$perl_archname")"
-snapshot_root="$ACTION_PATH/snapshots/$snapshot_relative"
-snapshot_path=""
-if [[ -d "$snapshot_root" ]]; then
-  [[ -f "$snapshot_root/cpanfile" ]] ||
-    fail "snapshot is missing cpanfile: $snapshot_relative"
-  [[ -f "$snapshot_root/cpanfile.snapshot" ]] ||
-    fail "snapshot is missing cpanfile.snapshot: $snapshot_relative"
-  [[ -f "$snapshot_root/environment.json" ]] ||
-    fail "snapshot is missing environment.json: $snapshot_relative"
-  verify_snapshot_environment \
-    "$snapshot_root/environment.json" \
-    "$requested_version" "$runner_os" "$runner_arch" "$perl_version" "$perl_archname"
-  snapshot_path="$snapshot_root/cpanfile.snapshot"
-  resolution_mode="snapshot"
-else
-  warning "no exact dependency snapshot for $runner_os-$runner_arch-$perl_version-$perl_archname; using dynamic resolution"
-  resolution_mode="dynamic"
-fi
-
-temp_base="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
-mkdir -p "$temp_base"
-work_root="$(mktemp -d "$temp_base/setup-minil-work.XXXXXX")"
-{
-  printf "requires 'Minilla', '== %s';\n" "$requested_version"
-  cat "$ACTION_PATH/runtime/minilla.cpanfile"
-} >"$work_root/cpanfile"
-tool_cache="${RUNNER_TOOL_CACHE:-$temp_base/setup-minil-tool-cache}"
-cache_arch="$(safe_path_component "$runner_arch")"
-cache_root="$tool_cache/minil/$distribution_version/$cache_arch"
-complete_marker="$cache_root.complete"
-
-snapshot_sha256=""
-if [[ -n "$snapshot_path" ]]; then
-  snapshot_sha256="$(sha256_file "$snapshot_path")"
-fi
-printf '%s\n' \
-  "$perl_exec" "$perl_version" "$perl_archname" "$runner_os" "$runner_arch" \
-  "$requested_version" "$resolution_mode" "$snapshot_sha256" \
-  "$(sha256_file "$ACTION_PATH/runtime/cpm")" \
-  "$(sha256_file "$ACTION_PATH/runtime/cpanfile")" \
-  "$(sha256_file "$ACTION_PATH/runtime/minilla.cpanfile")" \
-  "$(sha256_file "$0")" >"$work_root/installation-id"
-
-if [[ -f "$complete_marker" && -x "$cache_root/bin/minil" &&
-  -f "$cache_root/libexec/minil" && -f "$cache_root/installation-id" ]] &&
-  cmp -s "$work_root/installation-id" "$cache_root/installation-id"; then
-  printf 'setup-minil: reusing Tool Cache installation at %s\n' "$cache_root"
-  activate_installation
-  exit 0
-fi
-
-if [[ -e "$cache_root" || -e "$complete_marker" ]]; then
-  warning "Tool Cache entry is incomplete or does not match the selected environment; reinstalling"
-fi
-rm -f -- "$complete_marker"
-rm -rf -- "$cache_root"
-mkdir -p "$(dirname -- "$cache_root")"
-install_root="$(mktemp -d "$(dirname -- "$cache_root")/.$cache_arch.XXXXXX")"
-
-cpm_args=("$perl_exec")
-if [[ -n "$snapshot_path" ]]; then
-  snapshot_runtime_lib="$(bootstrap_snapshot_runtime "$perl_exec" "$work_root")"
-  cpm_args+=("-I$snapshot_runtime_lib")
-fi
-cpm_args+=(
-  "$ACTION_PATH/runtime/cpm"
-  install
-  "--cpanfile=$work_root/cpanfile"
-  --with-recommends
-  --top-level-phase=runtime
-  --mirror=https://cpan.metacpan.org/
-  "--local-lib-contained=$install_root"
-  --exclude-vendor
-  "--home=$work_root/cpm-home"
-  --no-prebuilt
-  --no-test
-  --show-build-log-on-failure
-)
-if [[ -n "$snapshot_path" ]]; then
-  cpm_args+=(
-    "--snapshot=$snapshot_path"
-    --resolver=snapshot
-    --no-default-resolvers
-  )
-fi
-(
-  cd -- "$work_root" || fail "cannot enter temporary working directory"
-  "${cpm_args[@]}"
-)
-
-[[ -f "$install_root/bin/minil" ]] ||
-  fail "cpm completed without installing bin/minil"
-mkdir -p "$install_root/libexec"
-mv "$install_root/bin/minil" "$install_root/libexec/minil"
-write_wrapper "$install_root/bin/minil" "$perl_exec"
-"$install_root/bin/minil" --version >/dev/null
-cp "$work_root/installation-id" "$install_root/installation-id"
-mv "$install_root" "$cache_root"
-install_root=""
-"$cache_root/bin/minil" --version >/dev/null
-: >"$complete_marker"
-
-activate_installation
+output('version', $version);
+output('resolution-mode', $mode);

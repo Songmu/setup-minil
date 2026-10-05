@@ -1,10 +1,4 @@
 {
-   "carton_bootstrap" : {
-      "cpanfile_sha256" : "ec9ec31c20f8e83488d665d985c3862afdb4eecdcb195c9bdb27bada0d2b5725",
-      "dependency_resolution" : "dynamic",
-      "distribution" : "Carton",
-      "version" : "v1.0.35"
-   },
    "cpm" : {
       "commit" : "1e93312a5e801b1f3a27182309a8e62c16e9d7c5",
       "sha256" : "2e7cdae8f84a673384d40e2486aa236955b7f69547d66f9920564c05b330f9e0",

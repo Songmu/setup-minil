@@ -1,59 +1,17 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/usr/bin/env perl
+use strict;
+use warnings;
+use FindBin;
+use lib $FindBin::Bin;
+use SetupMinil;
+use File::Temp ();
 
-readonly ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
-readonly CPM_VERSION="v1.1.5"
-readonly CPM_COMMIT="1e93312a5e801b1f3a27182309a8e62c16e9d7c5"
-readonly CPM_URL="https://raw.githubusercontent.com/skaji/cpm/$CPM_COMMIT/cpm"
-
-sha256_file() {
-  if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum "$1" | awk '{print $1}'
-  else
-    shasum -a 256 "$1" | awk '{print $1}'
-  fi
-}
-
-temp_root="$(mktemp -d)"
-trap 'rm -rf -- "$temp_root"' EXIT
-
-curl --fail --location --proto '=https' --tlsv1.2 \
-  --retry 3 --output "$temp_root/cpm" "$CPM_URL"
-cpm_sha256="$(sha256_file "$temp_root/cpm")"
-cpanfile_sha256="$(sha256_file "$ROOT/runtime/cpanfile")"
-carton_version="$(perl -ne 'print $1 if /requires \x27Carton\x27, \x27== ([^\x27]+)\x27;/' "$ROOT/runtime/cpanfile")"
-[[ -n "$carton_version" ]] || {
-  printf 'cannot extract exact Carton version from runtime/cpanfile\n' >&2
-  exit 1
-}
-
-cp "$temp_root/cpm" "$ROOT/runtime/cpm"
-chmod +x "$ROOT/runtime/cpm"
-
-RUNTIME_CPM_VERSION="$CPM_VERSION" \
-RUNTIME_CPM_COMMIT="$CPM_COMMIT" \
-RUNTIME_CPM_URL="$CPM_URL" \
-RUNTIME_CPM_SHA256="$cpm_sha256" \
-RUNTIME_CARTON_VERSION="$carton_version" \
-RUNTIME_CPANFILE_SHA256="$cpanfile_sha256" \
-perl -MJSON::PP -e '
-  my ($path) = @ARGV;
-  my $data = {
-    cpm => {
-      version => $ENV{RUNTIME_CPM_VERSION},
-      commit => $ENV{RUNTIME_CPM_COMMIT},
-      source => $ENV{RUNTIME_CPM_URL},
-      sha256 => $ENV{RUNTIME_CPM_SHA256},
-    },
-    carton_bootstrap => {
-      distribution => "Carton",
-      version => $ENV{RUNTIME_CARTON_VERSION},
-      cpanfile_sha256 => $ENV{RUNTIME_CPANFILE_SHA256},
-      dependency_resolution => "dynamic",
-    },
-  };
-  open my $fh, ">", $path or die "$path: $!";
-  print {$fh} JSON::PP->new->canonical->pretty->encode($data);
-' "$ROOT/runtime/manifest.json"
-
-"$ROOT/scripts/check-runtime"
+my $manifest = decode_json(read_file("$SetupMinil::ROOT/runtime/manifest.json"));
+my $work = File::Temp->newdir(CLEANUP => 1);
+run('curl', '--fail', '--location', '--proto', '=https', '--tlsv1.2', '--retry', '3',
+    '--output', "$work/cpm", $manifest->{cpm}{source});
+write_file("$SetupMinil::ROOT/runtime/cpm", read_file("$work/cpm"));
+chmod 0755, "$SetupMinil::ROOT/runtime/cpm" or die "chmod cpm: $!\n";
+$manifest->{cpm}{sha256} = digest("$work/cpm");
+write_file("$SetupMinil::ROOT/runtime/manifest.json", JSON::PP->new->canonical->pretty->encode($manifest));
+run("$SetupMinil::ROOT/scripts/check-runtime");
