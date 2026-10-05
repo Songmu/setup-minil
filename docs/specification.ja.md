@@ -96,6 +96,8 @@ snapshots/<minilla-version>/<os>-<runner-arch>-perl-<perl-version>-<perl-archnam
 - `cpanfile.snapshot`
 - `environment.json`
 
+`scripts/check-snapshots`はこの階層にあるsnapshot候補directoryをすべて検査します。`environment.json`がないdirectoryも対象にし、3つのfileが揃っていることを確認します。
+
 `environment.json`には次の情報を記録します。
 
 - runner OS

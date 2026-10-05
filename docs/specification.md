@@ -133,6 +133,9 @@ Each snapshot directory contains:
 - `cpanfile.snapshot`
 - `environment.json`
 
+`scripts/check-snapshots` checks every candidate directory at this depth,
+including directories missing `environment.json`, and requires all three files.
+
 `environment.json` records:
 
 - runner OS

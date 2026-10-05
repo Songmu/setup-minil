@@ -21,9 +21,19 @@ File::Find::find(
     {
         no_chdir => 1,
         wanted   => sub {
-            return unless $_ eq File::Spec->catfile($File::Find::dir, 'environment.json');
+            return unless -d $_;
+            my $directory = $_;
+            my $relative = File::Spec->abs2rel($directory, $root);
+            $relative =~ s{\\}{/}g;
+            return unless $relative =~ m{\A[^/]+/[^/]+\z};
 
-            open my $fh, '<', $_ or die "$_: $!";
+            for my $file (qw(cpanfile cpanfile.snapshot environment.json)) {
+                my $path = File::Spec->catfile($directory, $file);
+                -f $path or die "missing snapshot file: $path\n";
+            }
+
+            my $environment_file = File::Spec->catfile($directory, 'environment.json');
+            open my $fh, '<', $environment_file or die "$environment_file: $!";
             my $environment = JSON::PP::decode_json(do { local $/; <$fh> });
             my @required = qw(
                 runner_os
@@ -33,12 +43,12 @@ File::Find::find(
                 minilla_version
             );
             for my $field (@required) {
-                die "missing $field in $_\n"
+                die "missing $field in $environment_file\n"
                     unless defined $environment->{$field} && length $environment->{$field};
             }
 
             my $version = $environment->{minilla_version};
-            die "invalid Minilla version in $_: $version\n"
+            die "invalid Minilla version in $environment_file: $version\n"
                 unless $version =~ /\Av\d+\.\d+\.\d+\z/;
 
             my $expected = join '-',
@@ -47,15 +57,8 @@ File::Find::find(
                 'perl',
                 $environment->{perl_version},
                 safe_component($environment->{perl_archname});
-            my $relative = File::Spec->abs2rel($File::Find::dir, $root);
-            $relative =~ s{\\}{/}g;
             die "snapshot path does not match its environment: $relative\n"
                 unless $relative eq "$version/$expected";
-
-            for my $file (qw(cpanfile cpanfile.snapshot)) {
-                my $path = File::Spec->catfile($File::Find::dir, $file);
-                -f $path or die "missing snapshot file: $path\n";
-            }
         },
     },
     $root,
