@@ -1,0 +1,26 @@
+name: Setup Minilla
+description: Install Minilla with the Perl currently selected on the runner
+author: Masayuki Matsuki
+
+branding:
+  icon: package
+  color: blue
+
+inputs:
+  version:
+    description: Exact Minilla CPAN release (vX.Y.Z or X.Y.Z)
+    default: v3.2.0
+
+outputs:
+  version:
+    description: Installed Minilla version
+    value: ${{ steps.install.outputs.version }}
+
+runs:
+  using: composite
+  steps:
+    - id: install
+      shell: bash
+      env:
+        INPUT_VERSION: ${{ inputs.version }}
+      run: '"${GITHUB_ACTION_PATH}/scripts/setup-minil"'
