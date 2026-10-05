@@ -1,0 +1,58 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended"
+  ],
+  "enabledManagers": [
+    "cpanfile",
+    "custom.regex"
+  ],
+  "ignorePaths": [
+    "snapshots/**",
+    "t/**"
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Track the Minilla release used by the action and its tests",
+      "managerFilePatterns": [
+        "/^action\\.yml$/",
+        "/^README\\.md$/",
+        "/^docs/specification(?:\\.ja)?\\.md$/",
+        "/^\\.github/workflows/(?:ci|update-snapshots)\\.yml$/"
+      ],
+      "matchStrings": [
+        "default: (?<currentValue>v\\d+\\.\\d+\\.\\d+)",
+        "update-snapshots (?<currentValue>v\\d+\\.\\d+\\.\\d+)",
+        "outputs\\.version \\}\\}' = '(?<currentValue>v\\d+\\.\\d+\\.\\d+)'",
+        "\\| `version` \\| `(?<currentValue>v\\d+\\.\\d+\\.\\d+)`"
+      ],
+      "depNameTemplate": "Minilla",
+      "datasourceTemplate": "cpan",
+      "versioningTemplate": "perl"
+    },
+    {
+      "customType": "regex",
+      "description": "Track the tag and commit of the bundled cpm executable",
+      "managerFilePatterns": [
+        "/^runtime/manifest\\.json$/"
+      ],
+      "matchStrings": [
+        "\"cpm\"\\s*:\\s*\\{\\s*\"commit\"\\s*:\\s*\"(?<currentDigest>[a-f0-9]{40})\",\\s*\"sha256\"\\s*:\\s*\"[a-f0-9]{64}\",\\s*\"source\"\\s*:\\s*\"https://raw\\.githubusercontent\\.com/skaji/cpm/[a-f0-9]{40}/cpm\",\\s*\"version\"\\s*:\\s*\"(?<currentValue>v\\d+\\.\\d+\\.\\d+)\"\\s*\\}"
+      ],
+      "depNameTemplate": "skaji/cpm",
+      "datasourceTemplate": "github-tags",
+      "versioningTemplate": "semver",
+      "autoReplaceStringTemplate": "\"cpm\" : {\n      \"commit\" : \"{{{newDigest}}}\",\n      \"sha256\" : \"0000000000000000000000000000000000000000000000000000000000000000\",\n      \"source\" : \"https://raw.githubusercontent.com/skaji/cpm/{{{newDigest}}}/cpm\",\n      \"version\" : \"{{{newValue}}}\"\n   }"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Keep all Minilla release references in one pull request",
+      "matchPackageNames": [
+        "Minilla"
+      ],
+      "groupName": "Minilla release"
+    }
+  ]
+}
