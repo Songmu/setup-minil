@@ -5,21 +5,16 @@ readonly ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 
 version="${1:-}"
 [[ -n "$version" ]] || {
-  printf 'usage: scripts/update-snapshots <allowlisted-version>\n' >&2
+  printf 'usage: scripts/update-snapshots <version>\n' >&2
   exit 1
 }
 
-manifest_values="$(perl -MJSON::PP -0777 -e '
-  my ($file, $version) = @ARGV;
-  open my $fh, "<", $file or die "$file: $!";
-  my $data = decode_json(do { local $/; <$fh> });
-  die "unsupported Minilla version: $version\n"
-    unless exists $data->{versions}{$version};
-  print join "\t", @{$data->{versions}{$version}}{
-    qw(distribution_version download_url tarball_sha256)
-  };
-' "$ROOT/manifests/minilla.json" "$version")"
-IFS=$'\t' read -r distribution_version download_url tarball_sha256 <<<"$manifest_values"
+distribution_version="${version#v}"
+[[ "$distribution_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+  printf 'version must use vX.Y.Z or X.Y.Z\n' >&2
+  exit 1
+}
+version="v$distribution_version"
 
 runner_os="${RUNNER_OS:-$(uname -s)}"
 case "$runner_os" in
@@ -41,19 +36,6 @@ destination="$ROOT/snapshots/$directory"
 temp_root="$(mktemp -d)"
 trap 'rm -rf -- "$temp_root"' EXIT
 
-tarball="$temp_root/Minilla-$version.tar.gz"
-curl --fail --location --proto '=https' --tlsv1.2 \
-  --retry 3 --output "$tarball" "$download_url"
-perl -MDigest::SHA -e '
-  my ($file, $expected) = @ARGV;
-  open my $fh, "<", $file or die "$file: $!";
-  binmode $fh;
-  my $actual = Digest::SHA->new(256)->addfile($fh)->hexdigest;
-  die "Minilla tarball SHA-256 mismatch: expected $expected, got $actual\n"
-    unless $actual eq $expected;
-' "$tarball" "$tarball_sha256"
-tar -xOf "$tarball" "Minilla-$version/META.json" >"$temp_root/META.json"
-
 if ! command -v carmel >/dev/null 2>&1; then
   carmel_root="$temp_root/carmel"
   perl "$ROOT/runtime/cpm" install \
@@ -68,17 +50,10 @@ if ! command -v carmel >/dev/null 2>&1; then
   export PERL5LIB="$carmel_root/lib/perl5${PERL5LIB:+:$PERL5LIB}"
 fi
 
-perl -MCPAN::Meta -e '
-  my ($meta_file, $version, $cpanfile) = @ARGV;
-  my $meta = CPAN::Meta->load_file($meta_file);
-  my $recommends = $meta->effective_prereqs
-    ->requirements_for("runtime", "recommends")->as_string_hash;
-  open my $fh, ">", $cpanfile or die "$cpanfile: $!";
-  printf {$fh} "requires \x27Minilla\x27, \x27== %s\x27;\n", $version;
-  for my $module (sort keys %$recommends) {
-    printf {$fh} "requires \x27%s\x27, \x27%s\x27;\n", $module, $recommends->{$module};
-  }
-' "$temp_root/META.json" "$distribution_version" "$temp_root/cpanfile"
+{
+  printf "requires 'Minilla', '== %s';\n" "$version"
+  sed 's/^recommends /requires /' "$ROOT/runtime/minilla.cpanfile"
+} >"$temp_root/cpanfile"
 (
   cd "$temp_root"
   carmel install

@@ -19,13 +19,13 @@ composite Actionは1つのinputを受け取ります。
 
 | Input | デフォルト | 説明 |
 |---|---|---|
-| `version` | `v3.2.0` | `manifests/minilla.json`に記載されたMinillaの正確なrelease |
+| `version` | `v3.2.0` | `vX.Y.Z`または`X.Y.Z`形式の正確なMinilla release |
 
 1つのoutputを公開します。
 
 | Output | 説明 |
 |---|---|
-| `version` | installされたMinillaのversion |
+| `version` | `vX.Y.Z`へ正規化したinstall済みMinillaのversion |
 
 cache制御、digestのoverride、install先、依存関係の解決方法に関する診断情報は公開しません。
 
@@ -35,13 +35,12 @@ Actionは1つのinstall stepで以下を実行します。
 
 1. 選択されているPerl実行ファイルを絶対pathへ解決する。
 2. Perlの正確なversionと`archname`を取得する。
-3. 要求されたMinilla versionを`manifests/minilla.json`で検証する。
+3. 要求されたMinilla versionを正規化する。
 4. 利用可能であれば環境に完全一致する依存関係snapshotを選択する。
-5. 完了済みで条件が一致するTool Cacheを再利用するか、Minilla releaseをHTTPSでdownloadする。
-6. tarballをmanifestに記録されたSHA-256 digestで検証する。
-7. bundled cpmを使用して、Minillaと依存関係をRunner Tool Cache内のstaging directoryへinstallする。runtimeの`recommends`も含める。
-8. 生成された`minil` launcherを分離されたwrapperに置き換える。
-9. install結果を公開して完了markerを書き出し、install先の`bin` directoryだけを`GITHUB_PATH`へ追加する。
+5. 完了済みで条件が一致するTool Cacheがあれば再利用する。
+6. それ以外の場合はMinillaの正確なversion要求と`runtime/minilla.cpanfile`の推奨依存関係を含むcpanfileを生成し、bundled cpmと`--with-recommends`を使用してTool Cache内のstaging directoryへinstallする。
+7. 生成された`minil` launcherを分離されたwrapperに置き換える。
+8. install結果を公開して完了markerを書き出し、install先の`bin` directoryだけを`GITHUB_PATH`へ追加する。
 
 ## Runner Tool Cache
 
@@ -54,7 +53,7 @@ $RUNNER_TOOL_CACHE/minil/<normalized-minilla-version>/<arch>.complete
 
 たとえば`X64` runnerでMinilla `v3.2.0`をinstallする場合は、`minil/3.2.0/x64`を使用します。architectureは`x64`または`arm64`です。runner外などで`RUNNER_TOOL_CACHE`が未設定の場合は、`RUNNER_TEMP/setup-minil-tool-cache`へfallbackします。`RUNNER_TEMP`も未設定の場合はsystemの一時directoryを使用します。
 
-完了marker、wrapper、元のscript、`installation-id`が存在し、記録された識別情報が現在のinstall条件と一致する場合のみ再利用します。識別情報には選択されたPerlのpath、version、`archname`、runner OSとarchitecture、Minilla tarballのdigest、解決mode、snapshotのdigest、bundled cpmのdigest、bootstrap cpanfileのdigest、installerのdigestを記録します。
+完了marker、wrapper、元のscript、`installation-id`が存在し、記録された識別情報が現在のinstall条件と一致する場合のみ再利用します。識別情報には選択されたPerlのpath、version、`archname`、runner OSとarchitecture、Minilla version、解決mode、snapshotのdigest、bundled cpmのdigest、bootstrap cpanfileのdigest、推奨依存関係cpanfileとinstallerのdigestを記録します。
 
 未完了または条件が異なるentryは置き換えます。同じMinilla versionでもPerl環境が変わった場合に互換性のないinstall結果を再利用することはありません。各version/architectureのslotには1つの環境だけを保存します。self-hosted runnerでは同じTool Cache slotを並行job間で共有しないでください。
 
@@ -62,7 +61,10 @@ $RUNNER_TOOL_CACHE/minil/<normalized-minilla-version>/<arch>.complete
 
 ## 推奨依存関係
 
-Minillaのruntime `recommends`はデフォルトでinstallし、切り替え用の公開inputは設けません。検証済みtarballの`META.json`をcpmへ渡し、`--top-level-phase=runtime --with-recommends`を指定してからtarball自体をinstallします。cpmの`--with-recommends`は最上位の依存関係fileに対して適用され、tarball引数には適用されないため、metadataを明示的に指定します。
+`runtime/minilla.cpanfile`にはMinillaのdist・release commandで使用する推奨moduleを記載します。現在の一覧はMinilla v3.2.0のruntime推奨依存関係に合わせており、repository内で保守します。これらは`--with-recommends`でデフォルトinstallし、切り替え用の公開inputは設けません。
+また、Minillaのデフォルトbuild backendである`Module::Build::Tiny`を明示的に要求し、`minil test`と`minil dist`が事前installに依存しないようにします。
+
+最上位のcpanfileにMinillaの正確なversion要求とこれらの推奨依存関係をまとめることで、cpmを1回呼び出してinstallします。Action自身でMinillaのmetadataをdownload・展開することはありません。
 
 これには`Software::License`、`Version::Next`、`CPAN::Uploader`、Minillaが推奨するrelease test用moduleが含まれます。これらのmoduleの`requires`は通常どおり解決しますが、各module自身の`recommends`やMinillaの`suggests`を再帰的に有効にはしません。
 
@@ -72,11 +74,11 @@ Minillaのruntime `recommends`はデフォルトでinstallし、切り替え用�
 
 Actionはjob全体の`PERL5LIB`を設定しないため、後続の無関係なstepでは呼び出し元のPerl環境が維持されます。
 
-## releaseの完全性
+## versionの選択
 
-対応するreleaseは`manifests/minilla.json`でallowlist管理します。各entryにはrelease URLと期待するSHA-256 digestを記録します。
+inputは先頭の`v`の有無を問わず、3つの数値からなる正確なversionを受け付けます。要求されたMinilla versionはcpmがCPANから解決します。該当releaseが見つからない場合やinstallできない場合はActionを失敗させます。
 
-Actionは呼び出し元からdigestを受け取りません。要求されたreleaseはrepositoryのmanifestに存在する必要があり、downloadしたtarballは必ずcommit済みのdigestと一致する必要があります。
+Actionではreleaseのallowlist管理、tarballの直接download、独自のrelease digest検証は行いません。downloadと依存関係の解決はcpmへ委ねます。
 
 ## 依存関係snapshot
 
@@ -113,7 +115,7 @@ cpmがCarton形式のsnapshotを読み込むには`Carton::Snapshot`が必要で
 
 Carton distributionのversionは固定します。Carton snapshot自体を読み込むparserをsnapshotからbootstrapすることはできないため、bootstrap時の依存関係は動的に解決します。
 
-一時的にinstallしたCarton、download file、cpmの作業fileはAction終了時に削除します。Minillaのinstallが完了しなかった場合は、そのstaging directoryも削除します。正常に完了したMinillaのinstall先はRunner Tool Cacheに残します。
+一時的にinstallしたCartonとcpmの作業fileはAction終了時に削除します。Minillaのinstallが完了しなかった場合は、そのstaging directoryも削除します。正常に完了したMinillaのinstall先はRunner Tool Cacheに残します。
 
 ## bundled runtime
 
@@ -131,9 +133,9 @@ repositoryにはself-containedなcpmを`runtime/cpm`として同梱します。`
 
 `scripts/update-snapshots <version>`は次の処理を実行します。
 
-1. 要求されたMinilla versionを検証する。
+1. 要求されたMinilla versionを正規化する。
 2. Carmelが利用できない場合は、bundled cpmでCarmelをinstallする。
-3. SHA-256検証済みのMinilla tarballからruntimeの推奨依存関係を読み取り、生成するcpanfileでは明示的な`requires`として記載する。
+3. Minillaの正確なversionと`runtime/minilla.cpanfile`の推奨依存関係を含むcpanfileを生成する。推奨依存関係は明示的な`requires`に置き換え、Carmelがsnapshotに含めるようにする。
 4. 現在のsystem Perlを使用してCarton snapshotを生成する。
 5. 正確な環境metadataを書き出す。
 6. 同一環境のsnapshotを置き換える。
@@ -148,6 +150,6 @@ CIでは次の項目を検証します。
 - UbuntuおよびmacOSでのruntimeとsnapshot構造の検査
 - UbuntuおよびmacOSで選択したPerlを使用するdynamic install
 - GitHub-hosted UbuntuおよびmacOSのsystem Perlを使用するsnapshot生成とsnapshot-only install
-- 未対応Minilla versionの拒否
+- 不正なversion形式の拒否
 - Tool Cacheのdirectory構成、完了marker、再利用、無効化、install失敗時のcleanup
 - MIT licenseのfixture distributionに対する実際の`minil test`と`minil dist`の実行、およびtest結果と生成archiveの確認

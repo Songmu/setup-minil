@@ -2,7 +2,6 @@
 set -euo pipefail
 
 readonly ACTION_PATH="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
-readonly MANIFEST="$ACTION_PATH/manifests/minilla.json"
 
 fail() {
   printf 'setup-minil: %s\n' "$*" >&2
@@ -33,23 +32,6 @@ sha256_file() {
 
 safe_path_component() {
   printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -c 'A-Za-z0-9_.-' '_'
-}
-
-version_manifest_value() {
-  local version="$1"
-  local field="$2"
-  perl -MJSON::PP -0777 -e '
-    my ($file, $version, $field) = @ARGV;
-    open my $fh, "<", $file or die "$file: $!";
-    my $data = decode_json(do { local $/; <$fh> });
-    die "unsupported Minilla version: $version\n"
-      unless ref($data->{versions}) eq "HASH" &&
-        ref($data->{versions}{$version}) eq "HASH" &&
-        exists $data->{versions}{$version}{$field};
-    my $value = $data->{versions}{$version}{$field};
-    die "JSON value is not scalar: versions.$version.$field\n" if ref $value;
-    print $value;
-  ' "$MANIFEST" "$version" "$field"
 }
 
 normalize_os() {
@@ -171,6 +153,10 @@ cleanup() {
 trap cleanup EXIT
 
 requested_version="${INPUT_VERSION:-v3.2.0}"
+distribution_version="${requested_version#v}"
+[[ "$distribution_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] ||
+  fail "version must use vX.Y.Z or X.Y.Z"
+requested_version="v$distribution_version"
 command -v perl >/dev/null 2>&1 || fail "perl was not found on PATH"
 
 perl_exec="$(perl -MCwd=abs_path -e 'print abs_path($^X)')"
@@ -179,12 +165,6 @@ perl_archname="$("$perl_exec" -MConfig -e 'print $Config{archname}')"
 "$perl_exec" -e 'exit($] >= 5.024 ? 0 : 1)' ||
   fail "cpm v1 requires Perl 5.24 or later; selected Perl is $perl_version"
 
-download_url="$(version_manifest_value "$requested_version" download_url)" ||
-  fail "unsupported Minilla version: $requested_version"
-tarball_sha256="$(version_manifest_value "$requested_version" tarball_sha256)"
-distribution_version="$(version_manifest_value "$requested_version" distribution_version)"
-[[ "$distribution_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] ||
-  fail "manifest distribution_version must be a normalized semantic version"
 runner_os="$(normalize_os)"
 runner_arch="$(normalize_arch)"
 
@@ -212,6 +192,10 @@ fi
 temp_base="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
 mkdir -p "$temp_base"
 work_root="$(mktemp -d "$temp_base/setup-minil-work.XXXXXX")"
+{
+  printf "requires 'Minilla', '== %s';\n" "$requested_version"
+  cat "$ACTION_PATH/runtime/minilla.cpanfile"
+} >"$work_root/cpanfile"
 tool_cache="${RUNNER_TOOL_CACHE:-$temp_base/setup-minil-tool-cache}"
 cache_arch="$(safe_path_component "$runner_arch")"
 cache_root="$tool_cache/minil/$distribution_version/$cache_arch"
@@ -223,9 +207,10 @@ if [[ -n "$snapshot_path" ]]; then
 fi
 printf '%s\n' \
   "$perl_exec" "$perl_version" "$perl_archname" "$runner_os" "$runner_arch" \
-  "$tarball_sha256" "$resolution_mode" "$snapshot_sha256" \
+  "$requested_version" "$resolution_mode" "$snapshot_sha256" \
   "$(sha256_file "$ACTION_PATH/runtime/cpm")" \
   "$(sha256_file "$ACTION_PATH/runtime/cpanfile")" \
+  "$(sha256_file "$ACTION_PATH/runtime/minilla.cpanfile")" \
   "$(sha256_file "$0")" >"$work_root/installation-id"
 
 if [[ -f "$complete_marker" && -x "$cache_root/bin/minil" &&
@@ -243,14 +228,6 @@ rm -f -- "$complete_marker"
 rm -rf -- "$cache_root"
 mkdir -p "$(dirname -- "$cache_root")"
 install_root="$(mktemp -d "$(dirname -- "$cache_root")/.$cache_arch.XXXXXX")"
-tarball="$work_root/Minilla-$requested_version.tar.gz"
-
-curl --fail --location --proto '=https' --tlsv1.2 \
-  --retry 3 --output "$tarball" "$download_url"
-actual_sha256="$(sha256_file "$tarball")"
-[[ "$actual_sha256" == "$tarball_sha256" ]] ||
-  fail "Minilla tarball SHA-256 mismatch: expected $tarball_sha256, got $actual_sha256"
-tar -xOf "$tarball" "Minilla-$requested_version/META.json" >"$work_root/META.json"
 
 cpm_args=("$perl_exec")
 if [[ -n "$snapshot_path" ]]; then
@@ -260,6 +237,9 @@ fi
 cpm_args+=(
   "$ACTION_PATH/runtime/cpm"
   install
+  "--cpanfile=$work_root/cpanfile"
+  --with-recommends
+  --top-level-phase=runtime
   --mirror=https://cpan.metacpan.org/
   "--local-lib-contained=$install_root"
   --exclude-vendor
@@ -275,11 +255,7 @@ if [[ -n "$snapshot_path" ]]; then
     --no-default-resolvers
   )
 fi
-"${cpm_args[@]}" \
-  "--metafile=$work_root/META.json" \
-  --top-level-phase=runtime \
-  --with-recommends
-"${cpm_args[@]}" "$tarball"
+"${cpm_args[@]}"
 
 [[ -f "$install_root/bin/minil" ]] ||
   fail "cpm completed without installing bin/minil"

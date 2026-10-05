@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Allowlisted Minilla version
+        description: Exact Minilla version (vX.Y.Z or X.Y.Z)
         required: true
         default: v3.2.0
 
@@ -30,11 +30,13 @@ jobs:
 
       - name: Generate and verify snapshot
         id: snapshot
+        env:
+          VERSION: ${{ inputs.version }}
         shell: bash
         run: |
           set -euo pipefail
-          ./scripts/update-snapshots '${{ inputs.version }}'
-          SETUP_MINIL_INTEGRATION=true ./test/smoke.sh
+          ./scripts/update-snapshots "$VERSION"
+          INPUT_VERSION="$VERSION" SETUP_MINIL_INTEGRATION=true ./test/smoke.sh
 
       - name: Package snapshot
         shell: bash
@@ -66,13 +68,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          perl -MJSON::PP -0777 -e '
-            my ($file, $version) = @ARGV;
-            open my $fh, "<", $file or die "$file: $!";
-            my $data = decode_json(do { local $/; <$fh> });
-            die "unsupported Minilla version: $version\n"
-              unless exists $data->{versions}{$version};
-          ' manifests/minilla.json "$VERSION"
+          VERSION="${VERSION#v}"
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          VERSION="v$VERSION"
           rm -rf -- "snapshots/$VERSION"
           find "$RUNNER_TEMP/snapshots" -name snapshot.tgz -type f -print0 |
             while IFS= read -r -d '' archive; do

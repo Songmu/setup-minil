@@ -19,13 +19,13 @@ The composite Action accepts one input:
 
 | Input | Default | Description |
 |---|---|---|
-| `version` | `v3.2.0` | Exact Minilla release listed in `manifests/minilla.json` |
+| `version` | `v3.2.0` | Exact Minilla release in `vX.Y.Z` or `X.Y.Z` form |
 
 It exposes one output:
 
 | Output | Description |
 |---|---|
-| `version` | Installed Minilla version |
+| `version` | Installed Minilla version, normalized to `vX.Y.Z` |
 
 The Action does not expose cache controls, digest overrides, installation
 paths, or dependency-resolution diagnostics.
@@ -36,15 +36,14 @@ The Action performs one installation step:
 
 1. Resolve the selected Perl executable to an absolute path.
 2. Read its exact version and `archname`.
-3. Validate the requested Minilla version against `manifests/minilla.json`.
+3. Normalize the requested Minilla version.
 4. Select an exact dependency snapshot when available.
-5. Reuse a matching completed Tool Cache installation, or download the Minilla
-   release over HTTPS.
-6. Verify the tarball against the SHA-256 digest in the manifest.
-7. Install Minilla and its dependencies with bundled cpm into a staging
-   directory in the Runner Tool Cache, including its runtime `recommends`.
-8. Replace the generated `minil` launcher with an isolated wrapper.
-9. Publish the installation, write its completion marker, and add only the
+5. Reuse a matching completed Tool Cache installation when available.
+6. Otherwise, generate a cpanfile with an exact Minilla version requirement
+   and the recommendations in `runtime/minilla.cpanfile`, then install it with
+   bundled cpm and `--with-recommends` into a Tool Cache staging directory.
+7. Replace the generated `minil` launcher with an isolated wrapper.
+8. Publish the installation, write its completion marker, and add only the
    installation's `bin` directory to `GITHUB_PATH`.
 
 ## Runner Tool Cache
@@ -65,9 +64,9 @@ The architecture component is `x64` or `arm64`. Outside a runner, when
 An entry is reused only when its completion marker, wrapper, original script,
 and `installation-id` are present and the identity matches the current
 installation inputs. The identity records the selected Perl path, version,
-`archname`, runner OS and architecture, Minilla tarball digest, resolution
+`archname`, runner OS and architecture, Minilla version, resolution
 mode, snapshot digest, bundled cpm digest, bootstrap cpanfile digest, and
-installer digest.
+the recommended-dependency cpanfile and installer digests.
 
 An incomplete or mismatched entry is replaced. Switching Perl environments
 therefore never reuses an incompatible installation, even at the same Minilla
@@ -82,12 +81,17 @@ The Action does not restore or save `actions/cache` entries.
 
 ## Recommended dependencies
 
-Minilla's runtime `recommends` are included by default, without a public toggle.
-The verified tarball's `META.json` is passed to cpm with
-`--top-level-phase=runtime --with-recommends` before installing the tarball
-itself. Selecting the metadata explicitly is necessary because cpm's
-`--with-recommends` applies to top-level dependency-file inputs, not tarball
-arguments.
+`runtime/minilla.cpanfile` declares the recommended modules used by Minilla's
+distribution and release commands. This list currently follows Minilla
+v3.2.0's runtime recommendations and is maintained in the repository.
+The Action includes these modules by default with `--with-recommends`,
+without a public toggle.
+It also requires `Module::Build::Tiny`, Minilla's default build backend, so
+`minil test` and `minil dist` do not depend on a preinstalled copy.
+
+The generated top-level cpanfile combines the exact Minilla version
+requirement with these recommendations, so cpm installs everything in one
+invocation. The Action does not download or extract Minilla metadata itself.
 
 This includes `Software::License`, `Version::Next`, `CPAN::Uploader`, and
 Minilla's recommended release-testing modules. Dependencies that these modules
@@ -102,14 +106,15 @@ only the installation's `lib/perl5` directory when starting Minilla.
 The Action does not set job-wide `PERL5LIB`, so unrelated later steps retain
 the caller's existing Perl environment.
 
-## Release integrity
+## Version selection
 
-Supported releases are allowlisted in `manifests/minilla.json`. Each entry
-provides the release URL and expected SHA-256 digest.
+The input accepts exact three-component versions with or without the leading
+`v`. cpm resolves the requested Minilla version from CPAN. If the requested
+release cannot be found or installed, the Action fails.
 
-The Action does not accept a caller-supplied digest. A requested release must
-match the repository manifest, and every downloaded tarball must match its
-committed digest.
+The Action does not maintain a release allowlist, download tarballs directly,
+or add its own release digest verification. It delegates downloads and
+dependency resolution to cpm.
 
 ## Dependency snapshots
 
@@ -153,7 +158,7 @@ The Carton distribution version is pinned. Its bootstrap dependencies are
 resolved dynamically because a Carton snapshot cannot bootstrap the parser
 needed to read itself.
 
-The temporary Carton installation, downloads, and cpm working files are
+The temporary Carton installation and cpm working files are
 removed when the Action exits. An incomplete Minilla staging directory is also
 removed. A completed Minilla installation remains in the Runner Tool Cache.
 
@@ -175,10 +180,11 @@ with the Carton bootstrap requirement.
 
 `scripts/update-snapshots <version>`:
 
-1. Validates the requested Minilla version.
+1. Normalizes the requested Minilla version.
 2. Installs Carmel with bundled cpm when Carmel is not already available.
-3. Reads the runtime recommendations from the SHA-256-verified Minilla
-   tarball and makes them explicit requirements in the generated cpanfile.
+3. Generates a cpanfile with the exact Minilla version and promotes the
+   recommendations in `runtime/minilla.cpanfile` to explicit requirements,
+   so Carmel includes them in the snapshot.
 4. Generates a Carton snapshot with the current system Perl.
 5. Writes exact environment metadata.
 6. Replaces the snapshot for that exact environment.
@@ -197,7 +203,7 @@ CI covers:
 - dynamic installation with a selected Perl on Ubuntu and macOS
 - snapshot generation and snapshot-only installation on the GitHub-hosted
   system Perl for Ubuntu and macOS
-- rejection of unsupported Minilla versions
+- rejection of invalid version formats
 - Tool Cache layout, completion markers, reuse, invalidation, and failed-install
   cleanup
 - real `minil test` and `minil dist` invocations against the MIT-licensed fixture

@@ -10,11 +10,6 @@ use JSON::PP ();
 
 my $repository = Cwd::abs_path(File::Spec->catdir($FindBin::Bin, '..'));
 my $root = File::Spec->catdir($repository, 'snapshots');
-my $manifest_file = File::Spec->catfile($repository, 'manifests', 'minilla.json');
-
-open my $manifest_fh, '<', $manifest_file or die "$manifest_file: $!";
-my $manifest = JSON::PP::decode_json(do { local $/; <$manifest_fh> });
-
 sub safe_component {
     my ($value) = @_;
     $value = lc $value;
@@ -43,8 +38,8 @@ File::Find::find(
             }
 
             my $version = $environment->{minilla_version};
-            die "unsupported Minilla version in $_: $version\n"
-                unless exists $manifest->{versions}{$version};
+            die "invalid Minilla version in $_: $version\n"
+                unless $version =~ /\Av\d+\.\d+\.\d+\z/;
 
             my $expected = join '-',
                 safe_component($environment->{runner_os}),

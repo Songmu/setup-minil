@@ -93,12 +93,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-      - name: Reject an unsupported version
+      - name: Reject an invalid version
         id: unsupported
         continue-on-error: true
         uses: ./
         with:
-          version: v0.0.0
+          version: latest
       - name: Check rejection
         shell: bash
         run: test '${{ steps.unsupported.outcome }}' = 'failure'

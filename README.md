@@ -1,6 +1,6 @@
 # setup-minil
 
-`setup-minil` installs an allowlisted
+`setup-minil` installs a specified
 [Minilla](https://metacpan.org/dist/Minilla) release with the Perl currently
 selected on a GitHub Actions runner.
 
@@ -33,14 +33,14 @@ Pinning this action to a full commit SHA is recommended.
 
 | Input | Default | Description |
 |---|---|---|
-| `version` | `v3.2.0` | Exact allowlisted Minilla release |
+| `version` | `v3.2.0` | Exact Minilla release, in `vX.Y.Z` or `X.Y.Z` form |
 
 | Output | Description |
 |---|---|
 | `version` | Installed Minilla version |
 
-Only releases listed in `manifests/minilla.json` can be installed. The
-downloaded release is always checked against its committed SHA-256 digest.
+Minilla is installed from CPAN by cpm with an exact version requirement.
+There is no release allowlist or Action-managed tarball digest verification.
 
 ## Dependency resolution
 
@@ -52,8 +52,9 @@ Snapshot installs bootstrap the exact Carton version declared in
 `runtime/cpanfile`. The action bundles only self-contained cpm; Carton and its
 dependencies are not vendored.
 
-Minilla's runtime `recommends` are installed by default, including the modules
-used for non-Perl licenses, release testing, and CPAN uploads.
+The recommended modules listed in `runtime/minilla.cpanfile` are installed by
+default with `--with-recommends`, including the modules used for non-Perl
+licenses, release testing, and CPAN uploads.
 
 See [`docs/specification.md`](docs/specification.md) for the complete current
 behavior and maintenance model. A

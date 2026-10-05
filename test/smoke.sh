@@ -21,30 +21,33 @@ case "$(uname -m)" in
   *) printf 'unsupported test architecture\n' >&2; exit 1 ;;
 esac
 
-if INPUT_VERSION=v0.0.0 \
+if INPUT_VERSION=latest \
   GITHUB_OUTPUT="$temp_root/unsupported-output" \
   "$ROOT/scripts/setup-minil" 2>"$temp_root/unsupported-error"; then
-  printf 'unsupported version unexpectedly succeeded\n' >&2
+  printf 'invalid version unexpectedly succeeded\n' >&2
   exit 1
 fi
-grep -q 'unsupported Minilla version' "$temp_root/unsupported-error"
+grep -q 'version must use vX.Y.Z or X.Y.Z' "$temp_root/unsupported-error"
 
 if [[ "${SETUP_MINIL_INTEGRATION:-false}" == "true" ]]; then
+  test_version="${INPUT_VERSION:-v3.2.0}"
+  test_version="v${test_version#v}"
   original_perl5lib="${PERL5LIB-}"
   export GITHUB_OUTPUT="${SETUP_MINIL_OUTPUT:-$temp_root/install-output}"
   export GITHUB_PATH="$temp_root/github-path"
-  INPUT_VERSION=v3.2.0 "$ROOT/scripts/setup-minil"
+  INPUT_VERSION="$test_version" "$ROOT/scripts/setup-minil"
 
   bin_path="$(cat "$GITHUB_PATH")"
-  "$bin_path/minil" --version | grep -q 'v3.2.0'
-  [[ "$bin_path" == "$RUNNER_TOOL_CACHE/minil/3.2.0/"*"/bin" ]]
+  export PATH="$bin_path:$PATH"
+  "$bin_path/minil" --version | grep -Fq "${test_version#v}"
+  [[ "$bin_path" == "$RUNNER_TOOL_CACHE/minil/${test_version#v}/"*"/bin" ]]
   [[ -f "${bin_path%/bin}.complete" ]]
-  grep -q '^version=v3.2.0$' "$GITHUB_OUTPUT"
+  grep -Fxq "version=$test_version" "$GITHUB_OUTPUT"
   grep -Eq '^resolution-mode=(snapshot|dynamic)$' "$GITHUB_OUTPUT"
   [[ "${PERL5LIB-}" == "$original_perl5lib" ]]
 
   GITHUB_PATH="$temp_root/reused-path" \
-    INPUT_VERSION=v3.2.0 "$ROOT/scripts/setup-minil" >"$temp_root/reused-log"
+    INPUT_VERSION="$test_version" "$ROOT/scripts/setup-minil" >"$temp_root/reused-log"
   grep -q 'reusing Tool Cache installation' "$temp_root/reused-log"
   cmp "$temp_root/github-path" "$temp_root/reused-path"
 

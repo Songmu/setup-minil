@@ -3,7 +3,7 @@
 ## Unreleased
 
 - Add the initial `setup-minil` composite Action.
-- Install allowlisted Minilla releases into an isolated Runner Tool Cache
+- Install specified Minilla releases from CPAN into an isolated Runner Tool Cache
   directory and reuse matching completed installations.
 - Add dynamic dependency resolution and exact-environment snapshot support.
 - Include Minilla's runtime recommended dependencies by default in both
