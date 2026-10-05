@@ -66,7 +66,7 @@ and `installation-id` are present and the identity matches the current
 installation inputs. The identity records the selected Perl path, version,
 `archname`, runner OS and architecture, Minilla version, resolution
 mode, snapshot digest, bundled cpm digest, bootstrap cpanfile digest, and
-the recommended-dependency cpanfile and installer digests.
+the recommended-dependency cpanfile, installer, and shared-module digests.
 
 An incomplete or mismatched entry is replaced. Switching Perl environments
 therefore never reuses an incompatible installation, even at the same Minilla

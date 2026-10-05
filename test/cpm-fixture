@@ -1,0 +1,50 @@
+use strict;
+use warnings;
+use File::Path qw(make_path);
+die "wrong Perl\n" unless $^X eq $ENV{FIXTURE_PERL};
+die "caller snapshot leaked\n" if -f 'cpanfile.snapshot';
+open my $log, '>>', $ENV{CPM_LOG} or die $!;
+print {$log} "@ARGV\n";
+die "simulated installation failure\n" if $ENV{FAIL_INSTALL};
+my %args;
+
+for my $argument (@ARGV) {
+    if ( $argument =~ /^--([^=]+)=(.*)$/ ) {
+        $args{$1} = $2;
+    }
+}
+my $root = $args{'local-lib-contained'} or die "missing local-lib\n";
+make_path( "$root/bin", "$root/lib/perl5/Carton" );
+if ( grep { $_ eq 'Carmel' } @ARGV ) {
+    open my $fh, '>', "$root/bin/carmel" or die $!;
+    print {$fh} <<'PERL';
+#!/nonexistent/perl
+die "wrong Carmel Perl\n" unless $^X eq $ENV{FIXTURE_PERL};
+if ($ARGV[0] eq 'install') {
+    open my $fh, '>', 'cpanfile.snapshot' or die $!;
+    print {$fh} "# fixture snapshot\n";
+} else {
+    print "v0.1.56\n";
+}
+PERL
+}
+elsif ( $args{cpanfile} =~ /runtime\/cpanfile$/ ) {
+    open my $fh, '>', "$root/lib/perl5/Carton/Snapshot.pm" or die $!;
+    print {$fh} "package Carton::Snapshot; 1;\n";
+}
+else {
+    die "missing runtime recommendations\n" unless grep { $_ eq '--with-recommends' } @ARGV;
+    die "missing runtime phase\n"           unless $args{'top-level-phase'} eq 'runtime';
+    open my $input, '<', $args{cpanfile} or die $!;
+    my $content = do { local $/; <$input> };
+    my ($version) = $content =~ /requires 'Minilla', '== (v\d+\.\d+\.\d+)';/;
+    die "missing requirements\n"
+      unless $version
+      && $content =~ /recommends 'Software::License'/
+      && $content =~ /requires 'Module::Build::Tiny'/;
+    open my $fh, '>', "$root/bin/minil" or die $!;
+    print {$fh} <<"PERL";
+die "wrong wrapper Perl\\n" unless \$^X eq \$ENV{FIXTURE_PERL};
+print "Minilla $version\\n";
+PERL
+}

@@ -1,95 +1,41 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/usr/bin/env perl
+use strict;
+use warnings;
+use FindBin;
+use lib $FindBin::Bin;
+use SetupMinil;
+use File::Path qw(remove_tree);
+use File::Temp ();
+use JSON::PP   ();
 
-readonly ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+@ARGV == 1 or die "usage: scripts/update-snapshots <version>\n";
+my $env  = environment( $ARGV[0] );
+my $work = File::Temp->newdir( CLEANUP => 1 );
+cpm( "$work/carmel", "$work/carmel-cpm-home", [], 'Carmel' );
+local $ENV{PERL5LIB} = "$work/carmel/lib/perl5" . ( $ENV{PERL5LIB} ? ":$ENV{PERL5LIB}" : '' );
+my @carmel       = ( $SetupMinil::PERL, "$work/carmel/bin/carmel" );
+my $requirements = read_file("$SetupMinil::ROOT/runtime/minilla.cpanfile");
+$requirements =~ s/^recommends /requires /mg;
+write_file( "$work/cpanfile", "requires 'Minilla', '== $env->{minilla_version}';\n$requirements" );
+run_in( "$work", @carmel, 'install' );
+-f "$work/cpanfile.snapshot" or die "Carmel did not produce cpanfile.snapshot\n";
+open my $version, '-|', @carmel, 'version' or die "Carmel version: $!\n";
+$env->{generator}{carmel_version} = do { local $/; <$version> };
+close $version or die "Carmel version failed\n";
+chomp $env->{generator}{carmel_version};
+my $directory   = snapshot_path($env);
+my $destination = "$SetupMinil::ROOT/snapshots/$directory";
+remove_tree( $destination, { error => \my $errors } );
+die "cannot replace snapshot: $destination\n" if @$errors;
 
-version="${1:-}"
-[[ -n "$version" ]] || {
-  printf 'usage: scripts/update-snapshots <version>\n' >&2
-  exit 1
+for my $file (qw(cpanfile cpanfile.snapshot)) {
+    write_file( "$destination/$file", read_file("$work/$file") );
 }
-
-distribution_version="${version#v}"
-[[ "$distribution_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
-  printf 'version must use vX.Y.Z or X.Y.Z\n' >&2
-  exit 1
+write_file( "$destination/environment.json", JSON::PP->new->canonical->pretty->encode($env) );
+run("$SetupMinil::ROOT/scripts/check-snapshots");
+if ( $ENV{GITHUB_OUTPUT} ) {
+    output( 'snapshot-path', $directory );
 }
-version="v$distribution_version"
-
-runner_os="${RUNNER_OS:-$(uname -s)}"
-case "$runner_os" in
-  Darwin) runner_os=macOS ;;
-esac
-runner_arch="${RUNNER_ARCH:-$(uname -m)}"
-case "$runner_arch" in
-  x86_64|amd64) runner_arch=X64 ;;
-  arm64|aarch64) runner_arch=ARM64 ;;
-esac
-perl_exec="$(perl -e 'print $^X')"
-perl_version="$("$perl_exec" -MConfig -e 'print $Config{version}')"
-perl_archname="$("$perl_exec" -MConfig -e 'print $Config{archname}')"
-safe_archname="$(printf '%s' "$perl_archname" | tr '[:upper:]' '[:lower:]' | tr -c 'A-Za-z0-9_.-' '_')"
-directory="$version/$(printf '%s-%s-perl-%s-%s' \
-  "$runner_os" "$runner_arch" "$perl_version" "$safe_archname" |
-  tr '[:upper:]' '[:lower:]')"
-destination="$ROOT/snapshots/$directory"
-
-temp_root="$(mktemp -d)"
-trap 'rm -rf -- "$temp_root"' EXIT
-
-carmel_root="$temp_root/carmel"
-"$perl_exec" "$ROOT/runtime/cpm" install \
-  --mirror=https://cpan.metacpan.org/ \
-  "--local-lib-contained=$carmel_root" \
-  --exclude-vendor \
-  "--home=$temp_root/carmel-cpm-home" \
-  --no-prebuilt \
-  --no-test \
-  Carmel
-export PERL5LIB="$carmel_root/lib/perl5${PERL5LIB:+:$PERL5LIB}"
-carmel=("$perl_exec" "$carmel_root/bin/carmel")
-
-{
-  printf "requires 'Minilla', '== %s';\n" "$version"
-  sed 's/^recommends /requires /' "$ROOT/runtime/minilla.cpanfile"
-} >"$temp_root/cpanfile"
-(
-  cd "$temp_root"
-  "${carmel[@]}" install
-)
-[[ -f "$temp_root/cpanfile.snapshot" ]] || {
-  printf 'Carmel did not produce cpanfile.snapshot\n' >&2
-  exit 1
+else {
+    print "$directory\n";
 }
-
-rm -rf -- "$destination"
-mkdir -p "$destination"
-cp "$temp_root/cpanfile" "$destination/cpanfile"
-cp "$temp_root/cpanfile.snapshot" "$destination/cpanfile.snapshot"
-CARMEL_VERSION="$("${carmel[@]}" version 2>/dev/null || "${carmel[@]}" --version)" \
-RUNNER_OS_VALUE="$runner_os" \
-RUNNER_ARCH_VALUE="$runner_arch" \
-PERL_VERSION_VALUE="$perl_version" \
-PERL_ARCHNAME_VALUE="$perl_archname" \
-MINILLA_VERSION_VALUE="$version" \
-"$perl_exec" -MJSON::PP -e '
-  my ($path) = @ARGV;
-  my $data = {
-    runner_os => $ENV{RUNNER_OS_VALUE},
-    runner_arch => $ENV{RUNNER_ARCH_VALUE},
-    perl_version => $ENV{PERL_VERSION_VALUE},
-    perl_archname => $ENV{PERL_ARCHNAME_VALUE},
-    minilla_version => $ENV{MINILLA_VERSION_VALUE},
-    generator => { carmel_version => $ENV{CARMEL_VERSION} },
-  };
-  open my $fh, ">", $path or die "$path: $!";
-  print {$fh} JSON::PP->new->canonical->pretty->encode($data);
-' "$destination/environment.json"
-
-"$ROOT/scripts/check-snapshots"
-
-if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
-  printf 'snapshot-path=%s\n' "$directory" >>"$GITHUB_OUTPUT"
-else
-  printf '%s\n' "$directory"
-fi

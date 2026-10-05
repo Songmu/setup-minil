@@ -1,65 +1,12 @@
 #!/usr/bin/env perl
 use strict;
 use warnings;
+use FindBin;
+use lib $FindBin::Bin;
+use SetupMinil;
+use File::Glob qw(bsd_glob);
 
-use Cwd ();
-use File::Find ();
-use File::Spec ();
-use FindBin ();
-use JSON::PP ();
-
-my $repository = Cwd::abs_path(File::Spec->catdir($FindBin::Bin, '..'));
-my $root = File::Spec->catdir($repository, 'snapshots');
-sub safe_component {
-    my ($value) = @_;
-    $value = lc $value;
-    $value =~ s/[^a-z0-9_.-]/_/g;
-    return $value;
+for my $directory ( bsd_glob("$SetupMinil::ROOT/snapshots/*/*") ) {
+    next unless -d $directory;
+    check_snapshot($directory);
 }
-
-File::Find::find(
-    {
-        no_chdir => 1,
-        wanted   => sub {
-            return unless -d $_;
-            my $directory = $_;
-            my $relative = File::Spec->abs2rel($directory, $root);
-            $relative =~ s{\\}{/}g;
-            return unless $relative =~ m{\A[^/]+/[^/]+\z};
-
-            for my $file (qw(cpanfile cpanfile.snapshot environment.json)) {
-                my $path = File::Spec->catfile($directory, $file);
-                -f $path or die "missing snapshot file: $path\n";
-            }
-
-            my $environment_file = File::Spec->catfile($directory, 'environment.json');
-            open my $fh, '<', $environment_file or die "$environment_file: $!";
-            my $environment = JSON::PP::decode_json(do { local $/; <$fh> });
-            my @required = qw(
-                runner_os
-                runner_arch
-                perl_version
-                perl_archname
-                minilla_version
-            );
-            for my $field (@required) {
-                die "missing $field in $environment_file\n"
-                    unless defined $environment->{$field} && length $environment->{$field};
-            }
-
-            my $version = $environment->{minilla_version};
-            die "invalid Minilla version in $environment_file: $version\n"
-                unless $version =~ /\Av\d+\.\d+\.\d+\z/;
-
-            my $expected = join '-',
-                safe_component($environment->{runner_os}),
-                safe_component($environment->{runner_arch}),
-                'perl',
-                $environment->{perl_version},
-                safe_component($environment->{perl_archname});
-            die "snapshot path does not match its environment: $relative\n"
-                unless $relative eq "$version/$expected";
-        },
-    },
-    $root,
-);

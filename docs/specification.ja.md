@@ -53,7 +53,7 @@ $RUNNER_TOOL_CACHE/minil/<normalized-minilla-version>/<arch>.complete
 
 たとえば`X64` runnerでMinilla `v3.2.0`をinstallする場合は、`minil/3.2.0/x64`を使用します。architectureは`x64`または`arm64`です。runner外などで`RUNNER_TOOL_CACHE`が未設定の場合は、`RUNNER_TEMP/setup-minil-tool-cache`へfallbackします。`RUNNER_TEMP`も未設定の場合はsystemの一時directoryを使用します。
 
-完了marker、wrapper、元のscript、`installation-id`が存在し、記録された識別情報が現在のinstall条件と一致する場合のみ再利用します。識別情報には選択されたPerlのpath、version、`archname`、runner OSとarchitecture、Minilla version、解決mode、snapshotのdigest、bundled cpmのdigest、bootstrap cpanfileのdigest、推奨依存関係cpanfileとinstallerのdigestを記録します。
+完了marker、wrapper、元のscript、`installation-id`が存在し、記録された識別情報が現在のinstall条件と一致する場合のみ再利用します。識別情報には選択されたPerlのpath、version、`archname`、runner OSとarchitecture、Minilla version、解決mode、snapshotのdigest、bundled cpmのdigest、bootstrap cpanfileのdigest、推奨依存関係cpanfile、installer、共通moduleのdigestを記録します。
 
 未完了または条件が異なるentryは置き換えます。同じMinilla versionでもPerl環境が変わった場合に互換性のないinstall結果を再利用することはありません。各version/architectureのslotには1つの環境だけを保存します。self-hosted runnerでは同じTool Cache slotを並行job間で共有しないでください。
 
