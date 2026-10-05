@@ -213,6 +213,9 @@ CI covers:
 - dynamic installation with a selected Perl on Ubuntu and macOS
 - snapshot generation and snapshot-only installation on the GitHub-hosted
   system Perl for Ubuntu and macOS
+- snapshot-only installation from committed snapshots without regeneration
+  on Ubuntu and macOS, requiring an exact system Perl environment match and
+  verifying that the tracked snapshot files remain unchanged
 - rejection of invalid version formats
 - Tool Cache layout, completion markers, reuse, invalidation, and failed-install
   cleanup

@@ -154,6 +154,7 @@ CIでは次の項目を検証します。
 - UbuntuおよびmacOSでのruntimeとsnapshot構造の検査
 - UbuntuおよびmacOSで選択したPerlを使用するdynamic install
 - GitHub-hosted UbuntuおよびmacOSのsystem Perlを使用するsnapshot生成とsnapshot-only install
+- UbuntuおよびmacOSでcommit済みsnapshotを再生成せずに使用するsnapshot-only install。system Perl環境の完全一致と、追跡対象のsnapshotファイルが変更されていないことも確認する
 - 不正なversion形式の拒否
 - Tool Cacheのdirectory構成、完了marker、再利用、無効化、install失敗時のcleanup
 - MIT licenseのfixture distributionに対する実際の`minil test`と`minil dist`の実行、およびtest結果と生成archiveの確認

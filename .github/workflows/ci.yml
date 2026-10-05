@@ -23,6 +23,7 @@ jobs:
         resolution:
           - dynamic
           - snapshot
+          - committed-snapshot
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -43,6 +44,15 @@ jobs:
         if: matrix.resolution == 'snapshot'
         run: ./scripts/update-snapshots v3.2.0
 
+      - name: Verify the committed snapshot matches the selected Perl
+        if: matrix.resolution == 'committed-snapshot'
+        shell: bash
+        run: |
+          perl -I scripts -MSetupMinil -e '
+            my $env = environment("v3.2.0");
+            check_snapshot("./snapshots/" . snapshot_path($env), $env);
+          '
+
       - name: Record caller Perl environment
         id: perl-env
         shell: bash
@@ -54,10 +64,15 @@ jobs:
         shell: bash
         env:
           EXPECTED_PERL5LIB: ${{ steps.perl-env.outputs.perl5lib }}
+          EXPECTED_RESOLUTION_MODE: ${{ matrix.resolution == 'dynamic' && 'dynamic' || 'snapshot' }}
         run: |
           test '${{ steps.setup.outputs.version }}' = 'v3.2.0'
           test "${PERL5LIB-}" = "$EXPECTED_PERL5LIB"
           SETUP_MINIL_BIN="$(dirname "$(command -v minil)")" ./t/smoke.sh
 
           GITHUB_OUTPUT="$RUNNER_TEMP/setup-minil-output" ./scripts/setup-minil
-          grep -qx 'resolution-mode=${{ matrix.resolution }}' "$RUNNER_TEMP/setup-minil-output"
+          grep -qx "resolution-mode=$EXPECTED_RESOLUTION_MODE" "$RUNNER_TEMP/setup-minil-output"
+
+      - name: Verify committed snapshots were not modified
+        if: matrix.resolution == 'committed-snapshot'
+        run: git diff --exit-code -- snapshots
