@@ -15,7 +15,6 @@ cpm( "$work/carmel", "$work/carmel-cpm-home", [], 'Carmel' );
 local $ENV{PERL5LIB} = "$work/carmel/lib/perl5" . ( $ENV{PERL5LIB} ? ":$ENV{PERL5LIB}" : '' );
 my @carmel       = ( $SetupMinil::PERL, "$work/carmel/bin/carmel" );
 my $requirements = read_file("$SetupMinil::ROOT/runtime/minilla.cpanfile");
-$requirements =~ s/^recommends /requires /mg;
 write_file( "$work/cpanfile", "requires 'Minilla', '== $env->{minilla_version}';\n$requirements" );
 run_in( "$work", @carmel, 'install' );
 -f "$work/cpanfile.snapshot" or die "Carmel did not produce cpanfile.snapshot\n";
