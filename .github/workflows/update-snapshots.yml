@@ -5,6 +5,7 @@ on:
     inputs:
       version:
         description: Exact Minilla version (vX.Y.Z or X.Y.Z)
+        type: string
         required: true
         default: v3.2.0
 

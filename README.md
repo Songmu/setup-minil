@@ -69,9 +69,12 @@ make test
 make integration
 ```
 
+`make test` runs the offline regression suite with `prove -v t`; you can also run
+`prove -v t` directly.
+
 Installer and maintenance scripts use the selected Perl's core modules. The
-offline regression suite shares a cpm fixture; integration checks exercise the
-same Minilla distribution fixture locally and in CI.
+offline regression suite in `t/` shares a cpm fixture; integration checks exercise
+the same Minilla distribution fixture locally and in CI.
 
 Snapshot maintenance runs on GitHub-hosted Ubuntu and macOS runners through
 `.github/workflows/update-snapshots.yml`.

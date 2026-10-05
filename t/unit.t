@@ -22,7 +22,7 @@ for my $script ( bsd_glob("$SetupMinil::ROOT/scripts/*") ) {
 for my $file (qw(cpanfile minilla.cpanfile)) {
     cp( "$SetupMinil::ROOT/runtime/$file", "$root/runtime/$file" ) or die $!;
 }
-cp( "$SetupMinil::ROOT/test/cpm-fixture", "$root/runtime/cpm" ) or die $!;
+cp( "$SetupMinil::ROOT/t/cpm-fixture", "$root/runtime/cpm" ) or die $!;
 
 my %fixture_environment = (
     RUNNER_OS         => 'Linux',
