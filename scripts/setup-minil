@@ -125,7 +125,8 @@ bootstrap_snapshot_runtime() {
     --exclude-vendor \
     "--home=$work_root/carton-cpm-home" \
     --no-prebuilt \
-    --no-test
+    --no-test ||
+    fail "Carton bootstrap installation failed"
 
   "$perl_exec" "-I$bootstrap_root/lib/perl5" -MCarton::Snapshot -e 1 ||
     fail "Carton::Snapshot bootstrap failed"
