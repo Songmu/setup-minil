@@ -7,10 +7,12 @@ trap 'rm -rf -- "$temp_root"' EXIT
 
 action_root="$temp_root/action"
 mkdir -p "$action_root/scripts" "$action_root/runtime" "$action_root/manifests" \
-  "$temp_root/bin" "$temp_root/runner-temp"
+  "$temp_root/bin" "$temp_root/runner-temp" "$temp_root/fixture/Minilla-v3.2.0"
 cp "$ROOT/scripts/setup-minil" "$action_root/scripts/setup-minil"
 cp "$ROOT/runtime/cpanfile" "$action_root/runtime/cpanfile"
-printf 'fixture tarball\n' >"$temp_root/tarball"
+printf '{}\n' >"$temp_root/fixture/Minilla-v3.2.0/META.json"
+tar -czf "$temp_root/tarball" -C "$temp_root/fixture" Minilla-v3.2.0
+cp "$temp_root/tarball" "$temp_root/good-tarball"
 perl -MDigest::SHA=sha256_hex -MJSON::PP -0777 -e '
   my ($tarball, $manifest) = @ARGV;
   open my $fh, "<", $tarball or die "$tarball: $!";
@@ -46,6 +48,13 @@ cat >"$action_root/runtime/cpm" <<'PERL'
 use strict;
 use warnings;
 use File::Path qw(make_path);
+open my $log, ">>", $ENV{CPM_LOG} or die $!;
+print {$log} join(" ", @ARGV), "\n";
+close $log or die $!;
+if (grep /^--metafile=/, @ARGV) {
+    die "missing recommends selection\n" unless grep $_ eq "--with-recommends", @ARGV;
+    die "missing runtime selection\n" unless grep $_ eq "--top-level-phase=runtime", @ARGV;
+}
 my ($root) = map { /^--local-lib-contained=(.*)$/ ? $1 : () } @ARGV;
 die "missing local-lib\n" unless defined $root;
 make_path("$root/bin");
@@ -61,6 +70,7 @@ export RUNNER_TOOL_CACHE="$temp_root/tool-cache"
 export RUNNER_OS=Linux RUNNER_ARCH=X64
 export FIXTURE_TARBALL="$temp_root/tarball"
 export DOWNLOAD_LOG="$temp_root/downloads"
+export CPM_LOG="$temp_root/cpm-log"
 export GITHUB_PATH="$temp_root/github-path"
 export GITHUB_OUTPUT="$temp_root/output"
 cache_root="$RUNNER_TOOL_CACHE/minil/3.2.0/x64"
@@ -82,6 +92,7 @@ run_setup
 [[ -f "$cache_root.complete" && -f "$cache_root/installation-id" ]]
 [[ "$(cat "$GITHUB_PATH")" == "$cache_root/bin" ]]
 assert_downloads 1
+grep -q -- '--with-recommends' "$CPM_LOG"
 assert_clean_work
 
 run_setup
@@ -130,7 +141,7 @@ grep -q 'Minilla tarball SHA-256 mismatch' "$temp_root/error"
 [[ ! -e "$cache_root.complete" && ! -e "$cache_root" ]]
 assert_clean_work
 
-printf 'fixture tarball\n' >"$temp_root/tarball"
+cp "$temp_root/good-tarball" "$temp_root/tarball"
 env -u RUNNER_TOOL_CACHE "$action_root/scripts/setup-minil" >"$temp_root/log" 2>"$temp_root/error"
 [[ -f "$RUNNER_TEMP/setup-minil-tool-cache/minil/3.2.0/x64.complete" ]]
 assert_clean_work

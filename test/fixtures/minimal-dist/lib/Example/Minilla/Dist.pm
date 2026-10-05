@@ -19,7 +19,6 @@ setup-minil contributors
 
 =head1 LICENSE
 
-This library is free software; you can redistribute it under the same terms
-as Perl itself.
+This library is distributed under the MIT License.
 
 =cut

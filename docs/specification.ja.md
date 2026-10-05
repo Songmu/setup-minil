@@ -39,7 +39,7 @@ Actionは1つのinstall stepで以下を実行します。
 4. 利用可能であれば環境に完全一致する依存関係snapshotを選択する。
 5. 完了済みで条件が一致するTool Cacheを再利用するか、Minilla releaseをHTTPSでdownloadする。
 6. tarballをmanifestに記録されたSHA-256 digestで検証する。
-7. bundled cpmを使用して、Minillaと依存関係をRunner Tool Cache内のstaging directoryへinstallする。
+7. bundled cpmを使用して、Minillaと依存関係をRunner Tool Cache内のstaging directoryへinstallする。runtimeの`recommends`も含める。
 8. 生成された`minil` launcherを分離されたwrapperに置き換える。
 9. install結果を公開して完了markerを書き出し、install先の`bin` directoryだけを`GITHUB_PATH`へ追加する。
 
@@ -59,6 +59,12 @@ $RUNNER_TOOL_CACHE/minil/<normalized-minilla-version>/<arch>.complete
 未完了または条件が異なるentryは置き換えます。同じMinilla versionでもPerl環境が変わった場合に互換性のないinstall結果を再利用することはありません。各version/architectureのslotには1つの環境だけを保存します。self-hosted runnerでは同じTool Cache slotを並行job間で共有しないでください。
 
 最終directoryに隣接するstaging directoryでinstallし、installとwrapperの検証が成功してから完了markerを書き出します。一時作業fileと失敗したstaging directoryは終了時に削除します。`actions/cache`のrestore/saveは行いません。
+
+## 推奨依存関係
+
+Minillaのruntime `recommends`はデフォルトでinstallし、切り替え用の公開inputは設けません。検証済みtarballの`META.json`をcpmへ渡し、`--top-level-phase=runtime --with-recommends`を指定してからtarball自体をinstallします。cpmの`--with-recommends`は最上位の依存関係fileに対して適用され、tarball引数には適用されないため、metadataを明示的に指定します。
+
+これには`Software::License`、`Version::Next`、`CPAN::Uploader`、Minillaが推奨するrelease test用moduleが含まれます。これらのmoduleの`requires`は通常どおり解決しますが、各module自身の`recommends`やMinillaの`suggests`を再帰的に有効にはしません。
 
 ## Perl環境の分離
 
@@ -127,10 +133,11 @@ repositoryにはself-containedなcpmを`runtime/cpm`として同梱します。`
 
 1. 要求されたMinilla versionを検証する。
 2. Carmelが利用できない場合は、bundled cpmでCarmelをinstallする。
-3. 現在のsystem Perlを使用してCarton snapshotを生成する。
-4. 正確な環境metadataを書き出す。
-5. 同一環境のsnapshotを置き換える。
-6. `scripts/check-snapshots`を実行する。
+3. SHA-256検証済みのMinilla tarballからruntimeの推奨依存関係を読み取り、生成するcpanfileでは明示的な`requires`として記載する。
+4. 現在のsystem Perlを使用してCarton snapshotを生成する。
+5. 正確な環境metadataを書き出す。
+6. 同一環境のsnapshotを置き換える。
+7. `scripts/check-snapshots`を実行する。
 
 `.github/workflows/update-snapshots.yml`はGitHub-hosted UbuntuおよびmacOS runner上で、それぞれのimageに含まれるsystem Perlを使用してこの処理を実行します。生成された各snapshotを実際のMinilla installで検証し、snapshotをまとめたDraft PRを作成します。
 
@@ -143,4 +150,4 @@ CIでは次の項目を検証します。
 - GitHub-hosted UbuntuおよびmacOSのsystem Perlを使用するsnapshot生成とsnapshot-only install
 - 未対応Minilla versionの拒否
 - Tool Cacheのdirectory構成、完了marker、再利用、無効化、install失敗時のcleanup
-- fixture distributionに対する実際の`minil test`実行
+- MIT licenseのfixture distributionに対する実際の`minil test`と`minil dist`の実行、およびtest結果と生成archiveの確認

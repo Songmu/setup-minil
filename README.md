@@ -52,6 +52,9 @@ Snapshot installs bootstrap the exact Carton version declared in
 `runtime/cpanfile`. The action bundles only self-contained cpm; Carton and its
 dependencies are not vendored.
 
+Minilla's runtime `recommends` are installed by default, including the modules
+used for non-Perl licenses, release testing, and CPAN uploads.
+
 See [`docs/specification.md`](docs/specification.md) for the complete current
 behavior and maintenance model. A
 [Japanese translation](docs/specification.ja.md) is also available.

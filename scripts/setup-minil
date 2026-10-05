@@ -250,6 +250,7 @@ curl --fail --location --proto '=https' --tlsv1.2 \
 actual_sha256="$(sha256_file "$tarball")"
 [[ "$actual_sha256" == "$tarball_sha256" ]] ||
   fail "Minilla tarball SHA-256 mismatch: expected $tarball_sha256, got $actual_sha256"
+tar -xOf "$tarball" "Minilla-$requested_version/META.json" >"$work_root/META.json"
 
 cpm_args=("$perl_exec")
 if [[ -n "$snapshot_path" ]]; then
@@ -265,6 +266,7 @@ cpm_args+=(
   "--home=$work_root/cpm-home"
   --no-prebuilt
   --no-test
+  --show-build-log-on-failure
 )
 if [[ -n "$snapshot_path" ]]; then
   cpm_args+=(
@@ -273,8 +275,11 @@ if [[ -n "$snapshot_path" ]]; then
     --no-default-resolvers
   )
 fi
-cpm_args+=("$tarball")
-"${cpm_args[@]}"
+"${cpm_args[@]}" \
+  "--metafile=$work_root/META.json" \
+  --top-level-phase=runtime \
+  --with-recommends
+"${cpm_args[@]}" "$tarball"
 
 [[ -f "$install_root/bin/minil" ]] ||
   fail "cpm completed without installing bin/minil"

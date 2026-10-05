@@ -42,7 +42,7 @@ The Action performs one installation step:
    release over HTTPS.
 6. Verify the tarball against the SHA-256 digest in the manifest.
 7. Install Minilla and its dependencies with bundled cpm into a staging
-   directory in the Runner Tool Cache.
+   directory in the Runner Tool Cache, including its runtime `recommends`.
 8. Replace the generated `minil` launcher with an isolated wrapper.
 9. Publish the installation, write its completion marker, and add only the
    installation's `bin` directory to `GITHUB_PATH`.
@@ -79,6 +79,20 @@ Installation is staged beside the final directory and the completion marker
 is written only after a successful installation and wrapper check.
 Temporary working files and failed staging directories are removed on exit.
 The Action does not restore or save `actions/cache` entries.
+
+## Recommended dependencies
+
+Minilla's runtime `recommends` are included by default, without a public toggle.
+The verified tarball's `META.json` is passed to cpm with
+`--top-level-phase=runtime --with-recommends` before installing the tarball
+itself. Selecting the metadata explicitly is necessary because cpm's
+`--with-recommends` applies to top-level dependency-file inputs, not tarball
+arguments.
+
+This includes `Software::License`, `Version::Next`, `CPAN::Uploader`, and
+Minilla's recommended release-testing modules. Dependencies that these modules
+declare as `requires` are resolved normally; their own `recommends` and
+Minilla's `suggests` are not recursively enabled.
 
 ## Perl isolation
 
@@ -163,10 +177,12 @@ with the Carton bootstrap requirement.
 
 1. Validates the requested Minilla version.
 2. Installs Carmel with bundled cpm when Carmel is not already available.
-3. Generates a Carton snapshot with the current system Perl.
-4. Writes exact environment metadata.
-5. Replaces the snapshot for that exact environment.
-6. Runs `scripts/check-snapshots`.
+3. Reads the runtime recommendations from the SHA-256-verified Minilla
+   tarball and makes them explicit requirements in the generated cpanfile.
+4. Generates a Carton snapshot with the current system Perl.
+5. Writes exact environment metadata.
+6. Replaces the snapshot for that exact environment.
+7. Runs `scripts/check-snapshots`.
 
 `.github/workflows/update-snapshots.yml` runs this process on GitHub-hosted
 Ubuntu and macOS runners using each image's system Perl, verifies each
@@ -184,4 +200,5 @@ CI covers:
 - rejection of unsupported Minilla versions
 - Tool Cache layout, completion markers, reuse, invalidation, and failed-install
   cleanup
-- a real `minil test` invocation against the fixture distribution
+- real `minil test` and `minil dist` invocations against the MIT-licensed fixture
+  distribution, including test results and the generated archive

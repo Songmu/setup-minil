@@ -55,6 +55,12 @@ if [[ "${SETUP_MINIL_INTEGRATION:-false}" == "true" ]]; then
     git config user.name "setup-minil test"
     git config user.email "setup-minil@example.invalid"
     git add .
-    "$bin_path/minil" test
+    "$bin_path/minil" test 2>&1 | tee "$temp_root/minil-test.log"
+    grep -q 'Result: PASS' "$temp_root/minil-test.log"
+    "$bin_path/minil" dist 2>&1 | tee "$temp_root/minil-dist.log"
+    grep -q 'Result: PASS' "$temp_root/minil-dist.log"
+    test -s Example-Minilla-Dist-0.01.tar.gz
+    tar -xOf Example-Minilla-Dist-0.01.tar.gz \
+      Example-Minilla-Dist-0.01/LICENSE | grep -q 'MIT'
   )
 fi

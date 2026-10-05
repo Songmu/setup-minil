@@ -65,7 +65,13 @@ jobs:
           git config user.name "setup-minil CI"
           git config user.email "setup-minil@example.invalid"
           git add .
-          minil test
+          minil test 2>&1 | tee "$RUNNER_TEMP/minil-test.log"
+          grep -q 'Result: PASS' "$RUNNER_TEMP/minil-test.log"
+          minil dist 2>&1 | tee "$RUNNER_TEMP/minil-dist.log"
+          grep -q 'Result: PASS' "$RUNNER_TEMP/minil-dist.log"
+          test -s Example-Minilla-Dist-0.01.tar.gz
+          tar -xOf Example-Minilla-Dist-0.01.tar.gz \
+            Example-Minilla-Dist-0.01/LICENSE | grep -q 'MIT'
 
   snapshot-install:
     strategy:
