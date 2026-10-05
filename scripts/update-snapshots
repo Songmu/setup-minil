@@ -3,14 +3,6 @@ set -euo pipefail
 
 readonly ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 
-sha256_text() {
-  if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum | awk '{print $1}'
-  else
-    shasum -a 256 | awk '{print $1}'
-  fi
-}
-
 command -v carmel >/dev/null 2>&1 || {
   printf 'scripts/update-snapshots requires Carmel\n' >&2
   exit 1
@@ -43,8 +35,7 @@ esac
 perl_version="$(perl -MConfig -e 'print $Config{version}')"
 perl_archname="$(perl -MConfig -e 'print $Config{archname}')"
 fingerprint="$runner_os-$runner_arch-$perl_version-$perl_archname"
-arch_hash="$(printf '%s' "$perl_archname" | sha256_text | cut -c1-8)"
-directory="$version/$(printf '%s-%s-perl-%s-%s' "$runner_os" "$runner_arch" "$perl_version" "$arch_hash" | tr '[:upper:]' '[:lower:]')"
+directory="$version/$(printf '%s-%s-perl-%s' "$runner_os" "$runner_arch" "$perl_version" | tr '[:upper:]' '[:lower:]')"
 destination="$ROOT/snapshots/$directory"
 
 temp_root="$(mktemp -d)"
