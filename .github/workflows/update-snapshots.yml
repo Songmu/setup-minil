@@ -18,6 +18,8 @@ permissions:
 
 jobs:
   generate:
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
