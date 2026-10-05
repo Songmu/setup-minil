@@ -136,7 +136,7 @@ repositoryにはself-containedなcpmを`runtime/cpm`として同梱します。`
 `scripts/update-snapshots <version>`は次の処理を実行します。
 
 1. 要求されたMinilla versionを正規化する。
-2. Carmelが利用できない場合は、bundled cpmでCarmelをinstallする。
+2. 選択したPerlとbundled cpmを使用して、毎回一時local-libへCarmelをinstallする。PATH上の既存Carmelは再利用せず、同じPerlを指定して起動する。
 3. Minillaの正確なversionと`runtime/minilla.cpanfile`の推奨依存関係を含むcpanfileを生成する。推奨依存関係は明示的な`requires`に置き換え、Carmelがsnapshotに含めるようにする。
 4. 現在のsystem Perlを使用してCarton snapshotを生成する。
 5. 正確な環境metadataを書き出す。

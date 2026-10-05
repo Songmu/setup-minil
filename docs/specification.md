@@ -184,7 +184,9 @@ with the Carton bootstrap requirement.
 `scripts/update-snapshots <version>`:
 
 1. Normalizes the requested Minilla version.
-2. Installs Carmel with bundled cpm when Carmel is not already available.
+2. Always installs Carmel with bundled cpm into a temporary local-lib using the
+   selected Perl, and invokes it with that interpreter rather than reusing a
+   Carmel launcher on `PATH`.
 3. Generates a cpanfile with the exact Minilla version and promotes the
    recommendations in `runtime/minilla.cpanfile` to explicit requirements,
    so Carmel includes them in the snapshot.
