@@ -34,7 +34,6 @@ case "$runner_arch" in
 esac
 perl_version="$(perl -MConfig -e 'print $Config{version}')"
 perl_archname="$(perl -MConfig -e 'print $Config{archname}')"
-fingerprint="$runner_os-$runner_arch-$perl_version-$perl_archname"
 directory="$version/$(printf '%s-%s-perl-%s' "$runner_os" "$runner_arch" "$perl_version" | tr '[:upper:]' '[:lower:]')"
 destination="$ROOT/snapshots/$directory"
 
@@ -75,17 +74,11 @@ perl -MJSON::PP -e '
   print {$fh} JSON::PP->new->canonical->pretty->encode($data);
 ' "$destination/environment.json"
 
-VERSION_VALUE="$version" \
-FINGERPRINT_VALUE="$fingerprint" \
-DIRECTORY_VALUE="$directory" \
-perl -MJSON::PP -0777 -i -pe '
-  BEGIN {
-    our ($version, $fingerprint, $directory) =
-      @ENV{qw(VERSION_VALUE FINGERPRINT_VALUE DIRECTORY_VALUE)};
-  }
-  my $data = decode_json($_);
-  $data->{$version}{$fingerprint} = $directory;
-  $_ = JSON::PP->new->canonical->pretty->encode($data);
-' "$ROOT/snapshots/index.json"
-
+"$ROOT/scripts/rebuild-snapshot-index"
 "$ROOT/scripts/check-snapshots"
+
+if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
+  printf 'snapshot-path=%s\n' "$directory" >>"$GITHUB_OUTPUT"
+else
+  printf '%s\n' "$directory"
+fi

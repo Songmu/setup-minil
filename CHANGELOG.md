@@ -8,3 +8,5 @@
 - Add optional validated persistent caching for snapshot installations.
 - Bundle a verified self-contained cpm and bootstrap an exact Carton version
   only when snapshot resolution needs it.
+- Generate supported snapshots on GitHub-hosted runners using their system
+  Perl installations.

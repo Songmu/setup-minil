@@ -3,6 +3,8 @@ set -euo pipefail
 
 readonly ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 
+"$ROOT/scripts/rebuild-snapshot-index" --check
+
 perl -MJSON::PP -e '
   my ($root, $index_file) = @ARGV;
   open my $fh, "<", $index_file or die "$index_file: $!";

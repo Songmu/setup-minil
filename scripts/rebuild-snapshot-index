@@ -1,0 +1,66 @@
+#!/usr/bin/env perl
+use strict;
+use warnings;
+
+use Cwd ();
+use File::Find ();
+use File::Spec ();
+use FindBin ();
+use JSON::PP ();
+
+my $check = @ARGV && $ARGV[0] eq '--check' ? shift : 0;
+die "usage: scripts/rebuild-snapshot-index [--check]\n" if @ARGV;
+
+my $root = Cwd::abs_path(File::Spec->catdir($FindBin::Bin, '..', 'snapshots'));
+my $index_file = File::Spec->catfile($root, 'index.json');
+my %index;
+
+File::Find::find(
+    {
+        no_chdir => 1,
+        wanted   => sub {
+            return unless $_ eq File::Spec->catfile($File::Find::dir, 'environment.json');
+
+            open my $fh, '<', $_ or die "$_: $!";
+            my $environment = JSON::PP::decode_json(do { local $/; <$fh> });
+            my @required = qw(
+                runner_os
+                runner_arch
+                perl_version
+                perl_archname
+                minilla_version
+            );
+            for my $field (@required) {
+                die "missing $field in $_\n"
+                    unless defined $environment->{$field} && length $environment->{$field};
+            }
+
+            my $directory = $File::Find::dir;
+            my $snapshot = File::Spec->catfile($directory, 'cpanfile.snapshot');
+            my $cpanfile = File::Spec->catfile($directory, 'cpanfile');
+            -f $snapshot or die "missing snapshot: $snapshot\n";
+            -f $cpanfile or die "missing cpanfile: $cpanfile\n";
+
+            my $relative = File::Spec->abs2rel($directory, $root);
+            $relative =~ s{\\}{/}g;
+            my $version = $environment->{minilla_version};
+            my $fingerprint = join '-',
+                @{$environment}{qw(runner_os runner_arch perl_version perl_archname)};
+            die "duplicate snapshot fingerprint: $version $fingerprint\n"
+                if exists $index{$version}{$fingerprint};
+            $index{$version}{$fingerprint} = $relative;
+        },
+    },
+    $root,
+);
+
+my $encoded = JSON::PP->new->canonical->pretty->encode(\%index);
+if ($check) {
+    open my $fh, '<', $index_file or die "$index_file: $!";
+    my $current = do { local $/; <$fh> };
+    die "$index_file is stale; run scripts/rebuild-snapshot-index\n"
+        unless $current eq $encoded;
+} else {
+    open my $fh, '>', $index_file or die "$index_file: $!";
+    print {$fh} $encoded;
+}

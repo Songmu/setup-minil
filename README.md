@@ -146,6 +146,9 @@ Maintenance entry points:
 - `scripts/update-runtime` refreshes bundled cpm and its manifest.
 - `scripts/update-snapshots <version>` creates a snapshot for the current
   environment. It requires Carmel.
+- `.github/workflows/update-snapshots.yml` generates snapshots with the system
+  Perl on GitHub-hosted Ubuntu and macOS runners, verifies them in place, and
+  opens a Draft PR.
 - `scripts/check-runtime` and `scripts/check-snapshots` detect committed
   artifact drift.
 

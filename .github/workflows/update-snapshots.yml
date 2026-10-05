@@ -1,0 +1,125 @@
+name: Update snapshots
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Allowlisted Minilla version
+        required: true
+        default: v3.2.0
+
+concurrency:
+  group: update-snapshots-${{ inputs.version }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  generate:
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Install Carmel with bundled cpm
+        shell: bash
+        run: |
+          set -euo pipefail
+          carmel_root="$RUNNER_TEMP/setup-minil-carmel"
+          perl runtime/cpm install \
+            --mirror=https://cpan.metacpan.org/ \
+            "--local-lib-contained=$carmel_root" \
+            --exclude-vendor \
+            "--home=$RUNNER_TEMP/setup-minil-carmel-cpm" \
+            --no-prebuilt \
+            --no-test \
+            Carmel
+          printf '%s\n' "$carmel_root/bin" >>"$GITHUB_PATH"
+          printf 'PERL5LIB=%s%s\n' \
+            "$carmel_root/lib/perl5" \
+            "${PERL5LIB:+:$PERL5LIB}" >>"$GITHUB_ENV"
+
+      - name: Generate and verify snapshot
+        id: snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./scripts/update-snapshots '${{ inputs.version }}'
+          SETUP_MINIL_INTEGRATION=true ./test/smoke.sh
+
+      - name: Package snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar -czf "$RUNNER_TEMP/snapshot.tgz" \
+            '${{ format('snapshots/{0}', steps.snapshot.outputs.snapshot-path) }}'
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: snapshot-${{ runner.os }}-${{ runner.arch }}
+          path: ${{ runner.temp }}/snapshot.tgz
+          if-no-files-found: error
+
+  create-pull-request:
+    needs: generate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+        with:
+          pattern: snapshot-*
+          path: ${{ runner.temp }}/snapshots
+
+      - name: Merge generated snapshots
+        env:
+          VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          perl -MJSON::PP -0777 -e '
+            my ($file, $version) = @ARGV;
+            open my $fh, "<", $file or die "$file: $!";
+            my $data = decode_json(do { local $/; <$fh> });
+            die "unsupported Minilla version: $version\n"
+              unless exists $data->{versions}{$version};
+          ' manifests/minilla.json "$VERSION"
+          rm -rf -- "snapshots/$VERSION"
+          find "$RUNNER_TEMP/snapshots" -name snapshot.tgz -type f -print0 |
+            while IFS= read -r -d '' archive; do
+              tar -xzf "$archive"
+            done
+          ./scripts/rebuild-snapshot-index
+          ./scripts/check-snapshots
+
+      - name: Create Draft PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- snapshots; then
+            echo "Snapshots are already current."
+            exit 0
+          fi
+          branch="automation/update-snapshots-${VERSION#v}-${GITHUB_RUN_ID}"
+          git switch -c "$branch"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add snapshots
+          git commit -m "Update Minilla $VERSION snapshots"
+          git push origin "$branch"
+          gh pr create \
+            --draft \
+            --title "Update Minilla $VERSION snapshots" \
+            --body "Generated on GitHub-hosted Ubuntu and macOS runners using each image's system Perl." \
+            --base "${{ github.event.repository.default_branch }}" \
+            --head "$branch"
