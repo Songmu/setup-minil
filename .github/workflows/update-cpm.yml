@@ -1,0 +1,75 @@
+name: Update bundled cpm
+
+on:
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+
+permissions:
+  contents: read
+
+jobs:
+  update:
+    if: >-
+      github.event.pull_request.user.login == 'renovate[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: write
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          persist-credentials: false
+
+      - name: Verify the pull request only changes cpm runtime files
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          git fetch --no-tags origin "$BASE_REF"
+
+          changed_manifest=false
+          while IFS= read -r file; do
+            case "$file" in
+              runtime/manifest.json)
+                changed_manifest=true
+                ;;
+              runtime/cpm)
+                ;;
+              *)
+                echo "Unexpected file in cpm update: $file" >&2
+                exit 1
+                ;;
+            esac
+          done < <(git diff --name-only "origin/$BASE_REF...HEAD")
+
+          test "$changed_manifest" = true
+
+      - name: Refresh the bundled executable and checksums
+        run: |
+          ./scripts/update-runtime
+          make check
+
+      - name: Commit generated runtime files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          git add runtime/cpm runtime/manifest.json
+
+          if git diff --cached --quiet; then
+            echo "Bundled cpm files are already current."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Regenerate bundled cpm"
+          git -c credential.helper= -c 'credential.helper=!gh auth git-credential' \
+            push origin "HEAD:$HEAD_REF"
+
+          gh workflow run ci.yml --ref "$HEAD_REF"

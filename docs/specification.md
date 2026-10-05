@@ -56,7 +56,7 @@ $RUNNER_TOOL_CACHE/minil/<normalized-minilla-version>/<arch>/
 $RUNNER_TOOL_CACHE/minil/<normalized-minilla-version>/<arch>.complete
 ```
 
-For example, Minilla `v3.2.0` on an `X64` runner uses `minil/3.2.0/x64`.
+For example, Minilla `vX.Y.Z` on an `X64` runner uses `minil/X.Y.Z/x64`.
 The architecture component is `x64` or `arm64`. Outside a runner, when
 `RUNNER_TOOL_CACHE` is unset, the cache falls back to
 `RUNNER_TEMP/setup-minil-tool-cache` (or the system temporary directory).
@@ -82,8 +82,8 @@ The Action does not restore or save `actions/cache` entries.
 ## Recommended dependencies
 
 `runtime/minilla.cpanfile` declares the recommended modules used by Minilla's
-distribution and release commands. This list currently follows Minilla
-v3.2.0's runtime recommendations and is maintained in the repository.
+distribution and release commands. This list follows the selected Minilla
+release's runtime recommendations and is maintained in the repository.
 The Action declares these modules as direct requirements so cpm installs them
 without relying on recursive recommendation handling.
 It also requires `Module::Build::Tiny`, Minilla's default build backend, so

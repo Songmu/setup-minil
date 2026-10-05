@@ -51,7 +51,7 @@ $RUNNER_TOOL_CACHE/minil/<normalized-minilla-version>/<arch>/
 $RUNNER_TOOL_CACHE/minil/<normalized-minilla-version>/<arch>.complete
 ```
 
-たとえば`X64` runnerでMinilla `v3.2.0`をinstallする場合は、`minil/3.2.0/x64`を使用します。architectureは`x64`または`arm64`です。runner外などで`RUNNER_TOOL_CACHE`が未設定の場合は、`RUNNER_TEMP/setup-minil-tool-cache`へfallbackします。`RUNNER_TEMP`も未設定の場合はsystemの一時directoryを使用します。
+たとえば`X64` runnerでMinilla `vX.Y.Z`をinstallする場合は、`minil/X.Y.Z/x64`を使用します。architectureは`x64`または`arm64`です。runner外などで`RUNNER_TOOL_CACHE`が未設定の場合は、`RUNNER_TEMP/setup-minil-tool-cache`へfallbackします。`RUNNER_TEMP`も未設定の場合はsystemの一時directoryを使用します。
 
 完了marker、wrapper、元のscript、`installation-id`が存在し、記録された識別情報が現在のinstall条件と一致する場合のみ再利用します。識別情報には選択されたPerlのpath、version、`archname`、runner OSとarchitecture、Minilla version、解決mode、snapshotのdigest、bundled cpmのdigest、bootstrap cpanfileのdigest、推奨依存関係cpanfile、installer、共通moduleのdigestを記録します。
 
@@ -61,7 +61,7 @@ $RUNNER_TOOL_CACHE/minil/<normalized-minilla-version>/<arch>.complete
 
 ## 推奨依存関係
 
-`runtime/minilla.cpanfile`にはMinillaのdist・release commandで使用する推奨moduleを記載します。現在の一覧はMinilla v3.2.0のruntime推奨依存関係に合わせており、repository内で保守します。これらのmoduleは直接の`requires`として宣言し、cpmの再帰的な推奨依存関係処理に頼らずinstallします。
+`runtime/minilla.cpanfile`にはMinillaのdist・release commandで使用する推奨moduleを記載します。現在の一覧は選択したMinilla releaseのruntime推奨依存関係に合わせており、repository内で保守します。これらのmoduleは直接の`requires`として宣言し、cpmの再帰的な推奨依存関係処理に頼らずinstallします。
 また、Minillaのデフォルトbuild backendである`Module::Build::Tiny`を明示的に要求し、`minil test`と`minil dist`が事前installに依存しないようにします。
 
 最上位のcpanfileにMinillaの正確なversion要求とこれらの直接依存関係をまとめることで、cpmを1回呼び出してinstallします。Action自身でMinillaのmetadataをdownload・展開することはありません。
