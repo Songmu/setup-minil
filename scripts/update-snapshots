@@ -6,27 +6,36 @@ use lib $FindBin::Bin;
 use SetupMinil;
 use File::Path qw(remove_tree);
 use File::Temp ();
+use JSON::PP   ();
 
 @ARGV == 1 or die "usage: scripts/update-snapshots <version>\n";
-my $env = environment($ARGV[0]);
-my $work = File::Temp->newdir(CLEANUP => 1);
-cpm("$work/carmel", "$work/carmel-cpm-home", [], 'Carmel');
-local $ENV{PERL5LIB} = "$work/carmel/lib/perl5" . ($ENV{PERL5LIB} ? ":$ENV{PERL5LIB}" : '');
-my @carmel = ($SetupMinil::PERL, "$work/carmel/bin/carmel");
+my $env  = environment( $ARGV[0] );
+my $work = File::Temp->newdir( CLEANUP => 1 );
+cpm( "$work/carmel", "$work/carmel-cpm-home", [], 'Carmel' );
+local $ENV{PERL5LIB} = "$work/carmel/lib/perl5" . ( $ENV{PERL5LIB} ? ":$ENV{PERL5LIB}" : '' );
+my @carmel       = ( $SetupMinil::PERL, "$work/carmel/bin/carmel" );
 my $requirements = read_file("$SetupMinil::ROOT/runtime/minilla.cpanfile");
 $requirements =~ s/^recommends /requires /mg;
-write_file("$work/cpanfile", "requires 'Minilla', '== $env->{minilla_version}';\n$requirements");
-run_in("$work", @carmel, 'install');
+write_file( "$work/cpanfile", "requires 'Minilla', '== $env->{minilla_version}';\n$requirements" );
+run_in( "$work", @carmel, 'install' );
 -f "$work/cpanfile.snapshot" or die "Carmel did not produce cpanfile.snapshot\n";
 open my $version, '-|', @carmel, 'version' or die "Carmel version: $!\n";
 $env->{generator}{carmel_version} = do { local $/; <$version> };
 close $version or die "Carmel version failed\n";
 chomp $env->{generator}{carmel_version};
-my $directory = snapshot_path($env);
+my $directory   = snapshot_path($env);
 my $destination = "$SetupMinil::ROOT/snapshots/$directory";
-remove_tree($destination, { error => \my $errors });
+remove_tree( $destination, { error => \my $errors } );
 die "cannot replace snapshot: $destination\n" if @$errors;
-write_file("$destination/$_", read_file("$work/$_")) for qw(cpanfile cpanfile.snapshot);
-write_file("$destination/environment.json", JSON::PP->new->canonical->pretty->encode($env));
+
+for my $file (qw(cpanfile cpanfile.snapshot)) {
+    write_file( "$destination/$file", read_file("$work/$file") );
+}
+write_file( "$destination/environment.json", JSON::PP->new->canonical->pretty->encode($env) );
 run("$SetupMinil::ROOT/scripts/check-snapshots");
-$ENV{GITHUB_OUTPUT} ? output('snapshot-path', $directory) : print "$directory\n";
+if ( $ENV{GITHUB_OUTPUT} ) {
+    output( 'snapshot-path', $directory );
+}
+else {
+    print "$directory\n";
+}

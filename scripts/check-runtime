@@ -4,11 +4,22 @@ use warnings;
 use FindBin;
 use lib $FindBin::Bin;
 use SetupMinil;
+use JSON::PP qw(decode_json);
 
-my $manifest = decode_json(read_file("$SetupMinil::ROOT/runtime/manifest.json"));
+my $manifest = decode_json( read_file("$SetupMinil::ROOT/runtime/manifest.json") );
 digest("$SetupMinil::ROOT/runtime/cpm") eq $manifest->{cpm}{sha256}
-    or die "runtime/cpm digest mismatch\n";
-read_file("$SetupMinil::ROOT/runtime/cpanfile") =~ /\Arequires 'Carton', '== v\d+\.\d+\.\d+';\n\z/
-    or die "runtime/cpanfile must contain an exact Carton requirement\n";
-!-e "$SetupMinil::ROOT/runtime/$_" or die "runtime/$_ must not be committed\n" for qw(lib cpanfile.snapshot);
-run_quiet($SetupMinil::PERL, "$SetupMinil::ROOT/runtime/cpm", '--version');
+  or die "runtime/cpm digest mismatch\n";
+
+my $carton   = $manifest->{carton_bootstrap};
+my $cpanfile = "$SetupMinil::ROOT/runtime/cpanfile";
+digest($cpanfile) eq $carton->{cpanfile_sha256}
+  or die "runtime/cpanfile digest mismatch\n";
+read_file($cpanfile) =~ /^requires 'Carton', '== \Q$carton->{version}\E';$/m
+  or die "runtime/cpanfile does not exactly require Carton $carton->{version}\n";
+
+for my $path (qw(lib cpanfile.snapshot)) {
+    !-e "$SetupMinil::ROOT/runtime/$path"
+      or die "runtime/$path must not be committed\n";
+}
+
+run_quiet( $SetupMinil::PERL, "$SetupMinil::ROOT/runtime/cpm", '--version' );

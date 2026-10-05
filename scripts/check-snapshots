@@ -4,5 +4,9 @@ use warnings;
 use FindBin;
 use lib $FindBin::Bin;
 use SetupMinil;
+use File::Glob qw(bsd_glob);
 
-check_snapshot($_) for grep { -d } bsd_glob("$SetupMinil::ROOT/snapshots/*/*");
+for my $directory ( bsd_glob("$SetupMinil::ROOT/snapshots/*/*") ) {
+    next unless -d $directory;
+    check_snapshot($directory);
+}

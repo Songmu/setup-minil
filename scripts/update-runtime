@@ -5,13 +5,37 @@ use FindBin;
 use lib $FindBin::Bin;
 use SetupMinil;
 use File::Temp ();
+use JSON::PP   qw(decode_json);
 
-my $manifest = decode_json(read_file("$SetupMinil::ROOT/runtime/manifest.json"));
-my $work = File::Temp->newdir(CLEANUP => 1);
-run('curl', '--fail', '--location', '--proto', '=https', '--tlsv1.2', '--retry', '3',
-    '--output', "$work/cpm", $manifest->{cpm}{source});
-write_file("$SetupMinil::ROOT/runtime/cpm", read_file("$work/cpm"));
+my $manifest = decode_json( read_file("$SetupMinil::ROOT/runtime/manifest.json") );
+my $work     = File::Temp->newdir( CLEANUP => 1 );
+
+run(
+    'curl',
+    '--fail',
+    '--location',
+    '--proto', '=https',
+    '--tlsv1.2',
+    '--retry', '3',
+    '--output', "$work/cpm",
+    $manifest->{cpm}{source},
+);
+
+my $cpanfile = "$SetupMinil::ROOT/runtime/cpanfile";
+my ($carton_version) = read_file($cpanfile) =~ /requires 'Carton', '== ([^']+)';/;
+defined $carton_version
+  or die "cannot extract exact Carton version from runtime/cpanfile\n";
+
+write_file( "$SetupMinil::ROOT/runtime/cpm", read_file("$work/cpm") );
 chmod 0755, "$SetupMinil::ROOT/runtime/cpm" or die "chmod cpm: $!\n";
-$manifest->{cpm}{sha256} = digest("$work/cpm");
-write_file("$SetupMinil::ROOT/runtime/manifest.json", JSON::PP->new->canonical->pretty->encode($manifest));
+
+$manifest->{cpm}{sha256}                       = digest("$work/cpm");
+$manifest->{carton_bootstrap}{version}         = $carton_version;
+$manifest->{carton_bootstrap}{cpanfile_sha256} = digest($cpanfile);
+
+write_file(
+    "$SetupMinil::ROOT/runtime/manifest.json",
+    JSON::PP->new->canonical->pretty->encode($manifest)
+);
+
 run("$SetupMinil::ROOT/scripts/check-runtime");
