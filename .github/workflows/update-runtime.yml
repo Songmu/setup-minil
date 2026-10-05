@@ -16,7 +16,6 @@ jobs:
       - uses: shogo82148/actions-setup-perl@8b574cdc2dffdae49f803204a4f2b716a2fa1db7
         with:
           perl-version: "5.40"
-          install-modules: App::cpanminus
 
       - run: ./scripts/update-runtime
       - run: make integration
@@ -41,6 +40,6 @@ jobs:
           gh pr create \
             --draft \
             --title "Update bundled runtime" \
-            --body "Automated rebuild of the bundled cpm and Carton runtime." \
+            --body "Automated refresh of bundled cpm runtime metadata." \
             --base main \
             --head "$branch"

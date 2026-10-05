@@ -1,6 +1,8 @@
 {
-   "carton" : {
-      "sha256" : "9c4558ca97cd08b69fdfb52b28c3ddc2043ef52f0627b90e53d05a4087344175",
+   "carton_bootstrap" : {
+      "cpanfile_sha256" : "ec9ec31c20f8e83488d665d985c3862afdb4eecdcb195c9bdb27bada0d2b5725",
+      "dependency_resolution" : "dynamic",
+      "distribution" : "Carton",
       "version" : "v1.0.35"
    },
    "cpm" : {
@@ -8,6 +10,5 @@
       "sha256" : "2e7cdae8f84a673384d40e2486aa236955b7f69547d66f9920564c05b330f9e0",
       "source" : "https://raw.githubusercontent.com/skaji/cpm/1e93312a5e801b1f3a27182309a8e62c16e9d7c5/cpm",
       "version" : "v1.1.5"
-   },
-   "runtime_tree_sha256" : "b390c979dfd4cd7bae53414b2248ec3774eba3231dbda5964195c64721005363"
+   }
 }

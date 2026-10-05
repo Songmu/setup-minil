@@ -6,4 +6,5 @@
 - Install allowlisted Minilla releases into the Runner Tool Cache.
 - Add dynamic dependency resolution and exact-environment snapshot support.
 - Add optional validated persistent caching for snapshot installations.
-- Bundle a verified self-contained cpm and pure-Perl Carton snapshot runtime.
+- Bundle a verified self-contained cpm and bootstrap an exact Carton version
+  only when snapshot resolution needs it.

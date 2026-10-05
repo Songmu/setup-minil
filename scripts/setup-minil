@@ -32,6 +32,10 @@ sha256_file() {
   fi
 }
 
+safe_path_component() {
+  printf '%s' "$1" | tr -c 'A-Za-z0-9_.-' '_'
+}
+
 json_value() {
   local file="$1"
   local expression="$2"
@@ -133,7 +137,8 @@ manifest_matches() {
     runner_os "$RUNNER_OS_NAME" \
     runner_arch "$RUNNER_ARCH_NAME" \
     resolution_mode "$RESOLUTION_MODE" \
-    snapshot_sha256 "$SNAPSHOT_SHA256"
+    snapshot_sha256 "$SNAPSHOT_SHA256" \
+    carton_bootstrap_sha256 "$CARTON_BOOTSTRAP_SHA256"
 }
 
 installation_metadata_is_valid() {
@@ -152,6 +157,44 @@ activate_existing_installation() {
   "$root/bin/minil" --version >/dev/null 2>&1
 }
 
+bootstrap_snapshot_runtime() {
+  local cpanfile_sha256
+  cpanfile_sha256="$(sha256_file "$ACTION_PATH/runtime/cpanfile")"
+  [[ "$cpanfile_sha256" == "$CARTON_BOOTSTRAP_SHA256" ]] ||
+    fail "runtime/cpanfile changed after environment preparation"
+  local safe_archname
+  safe_archname="$(safe_path_component "$PERL_ARCHNAME")"
+  local bootstrap_root="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/setup-minil-carton/$PERL_VERSION-$safe_archname-$cpanfile_sha256"
+  local bootstrap_lib="$bootstrap_root/lib/perl5"
+  local bootstrap_home="$bootstrap_root.cpm-home"
+  local complete_marker="$bootstrap_root.complete"
+
+  if [[ -f "$complete_marker" ]] &&
+    "$PERL_EXEC" "-I$bootstrap_lib" -MCarton::Snapshot -e 1; then
+    SNAPSHOT_RUNTIME_LIB="$bootstrap_lib"
+    return
+  fi
+
+  rm -rf -- "$bootstrap_root"
+  rm -rf -- "$bootstrap_home"
+  rm -f -- "$complete_marker"
+  mkdir -p "$(dirname -- "$bootstrap_root")"
+
+  "$PERL_EXEC" "$ACTION_PATH/runtime/cpm" install \
+    "--cpanfile=$ACTION_PATH/runtime/cpanfile" \
+    --mirror=https://cpan.metacpan.org/ \
+    "--local-lib-contained=$bootstrap_root" \
+    --exclude-vendor \
+    "--home=$bootstrap_home" \
+    --no-prebuilt \
+    --no-test
+
+  "$PERL_EXEC" "-I$bootstrap_lib" -MCarton::Snapshot -e 1 ||
+    fail "Carton::Snapshot bootstrap failed"
+  : >"$complete_marker"
+  SNAPSHOT_RUNTIME_LIB="$bootstrap_lib"
+}
+
 load_state() {
   [[ -n "${PREPARED_STATE:-}" && -f "$PREPARED_STATE" ]] ||
     fail "prepared state is missing; run the prepare phase first"
@@ -168,6 +211,7 @@ load_state() {
   RESOLUTION_MODE="$(json_value "$PREPARED_STATE" resolution_mode)"
   SNAPSHOT_PATH="$(json_value "$PREPARED_STATE" snapshot_path)"
   SNAPSHOT_SHA256="$(json_value "$PREPARED_STATE" snapshot_sha256)"
+  CARTON_BOOTSTRAP_SHA256="$(json_value "$PREPARED_STATE" carton_bootstrap_sha256)"
   CACHE_ENABLED="$(json_value "$PREPARED_STATE" cache_enabled)"
   CACHE_PATH="$(json_value "$PREPARED_STATE" cache_path)"
   COMPLETE_MARKER="$(json_value "$PREPARED_STATE" complete_marker)"
@@ -199,17 +243,19 @@ prepare() {
   download_url="$(version_manifest_value "$requested_version" download_url)"
   tarball_sha256="$(version_manifest_value "$requested_version" tarball_sha256)"
 
-  local fingerprint snapshot_relative snapshot_path snapshot_sha256 resolution_mode
+  local fingerprint snapshot_relative snapshot_path snapshot_sha256 carton_bootstrap_sha256 resolution_mode
   fingerprint="$runner_os-$runner_arch-$perl_version-$perl_archname"
   snapshot_relative="$(snapshot_index_value "$requested_version" "$fingerprint")"
   snapshot_path=""
   snapshot_sha256=""
+  carton_bootstrap_sha256=""
   resolution_mode="dynamic"
   if [[ -n "$snapshot_relative" ]]; then
     snapshot_path="$ACTION_PATH/snapshots/$snapshot_relative/cpanfile.snapshot"
     [[ -f "$snapshot_path" ]] ||
       fail "snapshot index points to a missing file: $snapshot_relative/cpanfile.snapshot"
     snapshot_sha256="$(sha256_file "$snapshot_path")"
+    carton_bootstrap_sha256="$(sha256_file "$ACTION_PATH/runtime/cpanfile")"
     resolution_mode="snapshot"
   else
     warning "no exact dependency snapshot for $fingerprint; using dynamic resolution"
@@ -227,7 +273,7 @@ prepare() {
   local cache_storage_path="$tool_cache_root/minil/$tool_cache_version"
   local complete_marker="$tool_cache_root/minil/$tool_cache_version/$cache_arch.complete"
   local safe_archname="${perl_archname//[^A-Za-z0-9_.-]/_}"
-  local cache_key="setup-minil-v1-$runner_os-$runner_arch-$perl_version-$safe_archname-$requested_version-$tarball_sha256-$snapshot_sha256"
+  local cache_key="setup-minil-v1-$runner_os-$runner_arch-$perl_version-$safe_archname-$requested_version-$tarball_sha256-$snapshot_sha256-$carton_bootstrap_sha256"
   local state_dir="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/setup-minil-state"
   mkdir -p "$state_dir"
   local state_path="$state_dir/state-$$.json"
@@ -254,6 +300,7 @@ prepare() {
     resolution_mode "$resolution_mode" \
     snapshot_path "$snapshot_path" \
     snapshot_sha256 "$snapshot_sha256" \
+    carton_bootstrap_sha256 "$carton_bootstrap_sha256" \
     cache_enabled "$cache_enabled" \
     cache_path "$cache_path" \
     complete_marker "$complete_marker"
@@ -311,9 +358,12 @@ install() {
     [[ "$actual_sha256" == "$TARBALL_SHA256" ]] ||
       fail "Minilla tarball SHA-256 mismatch: expected $TARBALL_SHA256, got $actual_sha256"
 
-    local -a cpm_args=(
-      "$PERL_EXEC"
-      "-I$ACTION_PATH/runtime/lib/perl5"
+    local -a cpm_args=("$PERL_EXEC")
+    if [[ "$RESOLUTION_MODE" == "snapshot" ]]; then
+      bootstrap_snapshot_runtime
+      cpm_args+=("-I$SNAPSHOT_RUNTIME_LIB")
+    fi
+    cpm_args+=(
       "$ACTION_PATH/runtime/cpm"
       install
       --mirror=https://cpan.metacpan.org/
@@ -411,7 +461,8 @@ write_install_manifest() {
     runner_os "$RUNNER_OS_NAME" \
     runner_arch "$RUNNER_ARCH_NAME" \
     resolution_mode "$RESOLUTION_MODE" \
-    snapshot_sha256 "$SNAPSHOT_SHA256"
+    snapshot_sha256 "$SNAPSHOT_SHA256" \
+    carton_bootstrap_sha256 "$CARTON_BOOTSTRAP_SHA256"
 }
 
 case "${1:-}" in

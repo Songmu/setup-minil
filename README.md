@@ -67,6 +67,10 @@ Perl `archname`.
   snapshot-only resolver.
 - Otherwise, the action emits a warning and uses cpm's default resolver.
 
+Snapshot mode first installs the exact Carton version declared in
+`runtime/cpanfile` into an isolated temporary local-lib. Carton's transitive
+bootstrap dependencies are dynamically resolved.
+
 Dynamic resolution verifies the Minilla release itself but does not fully pin
 its transitive dependencies.
 
@@ -101,7 +105,7 @@ Windows is not currently supported.
 - Supported releases are allowlisted.
 - Downloads require HTTPS and are checked against committed SHA-256 digests.
 - `expected-sha256` can add a caller-controlled digest assertion.
-- Bundled cpm and the pure-Perl Carton snapshot runtime are checked by
+- Bundled cpm and the exact Carton bootstrap requirement are checked by
   `scripts/check-runtime`.
 - Third-party Actions are pinned to full commit SHAs.
 
@@ -139,14 +143,16 @@ make integration
 
 Maintenance entry points:
 
-- `scripts/update-runtime` rebuilds bundled cpm and the pure-Perl Carton
-  runtime. It requires `cpanm`.
+- `scripts/update-runtime` refreshes bundled cpm and its manifest.
 - `scripts/update-snapshots <version>` creates a snapshot for the current
   environment. It requires Carmel.
 - `scripts/check-runtime` and `scripts/check-snapshots` detect committed
   artifact drift.
 
-Generated files under `runtime/lib/perl5` must not be edited manually.
+Snapshot installs bootstrap the exact Carton version declared in
+`runtime/cpanfile` with cpm. Carton's transitive dependencies are dynamically
+resolved because a Carton-format snapshot cannot bootstrap its own
+`Carton::Snapshot` parser.
 
 ## License
 

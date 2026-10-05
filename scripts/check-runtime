@@ -18,26 +18,26 @@ actual_cpm="$(sha256_file "$ROOT/runtime/cpm")"
   exit 1
 }
 
-forbidden="$(find "$ROOT/runtime/lib/perl5" -type f \( \
-  -name '*.so' -o -name '*.bundle' -o -name '*.dylib' -o \
-  -name '.packlist' -o -name perllocal.pod \
-\) -print)"
-[[ -z "$forbidden" ]] || {
-  printf 'runtime contains forbidden generated or native files:\n%s\n' "$forbidden" >&2
+expected_cpanfile="$(perl -MJSON::PP -0777 -e 'print decode_json(<>)->{carton_bootstrap}{cpanfile_sha256}' "$ROOT/runtime/manifest.json")"
+actual_cpanfile="$(sha256_file "$ROOT/runtime/cpanfile")"
+[[ "$actual_cpanfile" == "$expected_cpanfile" ]] || {
+  printf 'runtime/cpanfile digest mismatch: expected %s, got %s\n' "$expected_cpanfile" "$actual_cpanfile" >&2
   exit 1
 }
 
-metadata_directories="$(find "$ROOT/runtime/lib/perl5" -type d -name .meta -print)"
-[[ -z "$metadata_directories" ]] || {
-  printf 'runtime contains generated install metadata:\n%s\n' "$metadata_directories" >&2
+carton_version="$(perl -MJSON::PP -0777 -e 'print decode_json(<>)->{carton_bootstrap}{version}' "$ROOT/runtime/manifest.json")"
+grep -Fqx "requires 'Carton', '== $carton_version';" "$ROOT/runtime/cpanfile" || {
+  printf 'runtime/cpanfile does not exactly require Carton %s\n' "$carton_version" >&2
   exit 1
 }
 
-perl -I"$ROOT/runtime/lib/perl5" -MCarton::Snapshot -e 1
-
-expected_tree="$(perl -MJSON::PP -0777 -e 'print decode_json(<>)->{runtime_tree_sha256}' "$ROOT/runtime/manifest.json")"
-actual_tree="$("$ROOT/scripts/runtime-tree-digest")"
-[[ "$actual_tree" == "$expected_tree" ]] || {
-  printf 'runtime tree digest mismatch: expected %s, got %s\n' "$expected_tree" "$actual_tree" >&2
+[[ ! -e "$ROOT/runtime/lib" ]] || {
+  printf 'runtime/lib must not be committed; Carton is bootstrapped by cpm\n' >&2
   exit 1
 }
+[[ ! -e "$ROOT/runtime/cpanfile.snapshot" ]] || {
+  printf 'runtime/cpanfile.snapshot cannot bootstrap its own Carton parser\n' >&2
+  exit 1
+}
+
+perl "$ROOT/runtime/cpm" --version >/dev/null
