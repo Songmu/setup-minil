@@ -7,7 +7,7 @@ check:
 	for script in t/*.sh; do bash -n "$$script" || exit; done
 
 test: check
-	./t/unit.t
+	prove t
 
 integration: check
 	./t/smoke.sh

@@ -69,6 +69,9 @@ make test
 make integration
 ```
 
+`make test` runs the offline regression suite with `prove t`; you can also run
+`prove t` directly.
+
 Installer and maintenance scripts use the selected Perl's core modules. The
 offline regression suite in `t/` shares a cpm fixture; integration checks exercise
 the same Minilla distribution fixture locally and in CI.
