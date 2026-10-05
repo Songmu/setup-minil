@@ -4,8 +4,11 @@
 [Minilla](https://metacpan.org/dist/Minilla) release with the Perl currently
 selected on a GitHub Actions runner.
 
-The installation is isolated under `RUNNER_TEMP`. The action adds only its
-`bin` directory to `PATH` and does not modify the caller's `PERL5LIB`.
+The installation is isolated in the Runner Tool Cache. The action adds only
+its `bin` directory to `PATH` and does not modify the caller's `PERL5LIB`.
+
+Matching completed installations are reused. The action does not use
+`actions/cache` or expose cache controls.
 
 ## Usage
 

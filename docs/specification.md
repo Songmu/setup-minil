@@ -38,15 +38,47 @@ The Action performs one installation step:
 2. Read its exact version and `archname`.
 3. Validate the requested Minilla version against `manifests/minilla.json`.
 4. Select an exact dependency snapshot when available.
-5. Download the Minilla release over HTTPS.
+5. Reuse a matching completed Tool Cache installation, or download the Minilla
+   release over HTTPS.
 6. Verify the tarball against the SHA-256 digest in the manifest.
-7. Install Minilla and its dependencies with bundled cpm into a new directory
-   under `RUNNER_TEMP`.
+7. Install Minilla and its dependencies with bundled cpm into a staging
+   directory in the Runner Tool Cache.
 8. Replace the generated `minil` launcher with an isolated wrapper.
-9. Add only the installation's `bin` directory to `GITHUB_PATH`.
+9. Publish the installation, write its completion marker, and add only the
+   installation's `bin` directory to `GITHUB_PATH`.
 
-Installations are intentionally not stored in the Runner Tool Cache or
-`actions/cache`. Each Action invocation creates a fresh installation.
+## Runner Tool Cache
+
+The Action follows the tool/version/architecture directory layout and sibling
+completion marker used by `@actions/tool-cache`:
+
+```text
+$RUNNER_TOOL_CACHE/minil/<normalized-minilla-version>/<arch>/
+$RUNNER_TOOL_CACHE/minil/<normalized-minilla-version>/<arch>.complete
+```
+
+For example, Minilla `v3.2.0` on an `X64` runner uses `minil/3.2.0/x64`.
+The architecture component is `x64` or `arm64`. Outside a runner, when
+`RUNNER_TOOL_CACHE` is unset, the cache falls back to
+`RUNNER_TEMP/setup-minil-tool-cache` (or the system temporary directory).
+
+An entry is reused only when its completion marker, wrapper, original script,
+and `installation-id` are present and the identity matches the current
+installation inputs. The identity records the selected Perl path, version,
+`archname`, runner OS and architecture, Minilla tarball digest, resolution
+mode, snapshot digest, bundled cpm digest, bootstrap cpanfile digest, and
+installer digest.
+
+An incomplete or mismatched entry is replaced. Switching Perl environments
+therefore never reuses an incompatible installation, even at the same Minilla
+version. Only one environment is stored in each version/architecture slot.
+Self-hosted runners must not share this Tool Cache slot between concurrent
+jobs.
+
+Installation is staged beside the final directory and the completion marker
+is written only after a successful installation and wrapper check.
+Temporary working files and failed staging directories are removed on exit.
+The Action does not restore or save `actions/cache` entries.
 
 ## Perl isolation
 
@@ -108,9 +140,8 @@ resolved dynamically because a Carton snapshot cannot bootstrap the parser
 needed to read itself.
 
 The temporary Carton installation, downloads, and cpm working files are
-removed when the Action exits. An incomplete Minilla installation is also
-removed. A completed Minilla installation remains under `RUNNER_TEMP` for the
-rest of the job.
+removed when the Action exits. An incomplete Minilla staging directory is also
+removed. A completed Minilla installation remains in the Runner Tool Cache.
 
 ## Bundled runtime
 
@@ -151,4 +182,6 @@ CI covers:
 - snapshot generation and snapshot-only installation on the GitHub-hosted
   system Perl for Ubuntu and macOS
 - rejection of unsupported Minilla versions
+- Tool Cache layout, completion markers, reuse, invalidation, and failed-install
+  cleanup
 - a real `minil test` invocation against the fixture distribution

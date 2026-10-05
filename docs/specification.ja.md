@@ -37,13 +37,28 @@ Actionは1つのinstall stepで以下を実行します。
 2. Perlの正確なversionと`archname`を取得する。
 3. 要求されたMinilla versionを`manifests/minilla.json`で検証する。
 4. 利用可能であれば環境に完全一致する依存関係snapshotを選択する。
-5. Minilla releaseをHTTPSでdownloadする。
+5. 完了済みで条件が一致するTool Cacheを再利用するか、Minilla releaseをHTTPSでdownloadする。
 6. tarballをmanifestに記録されたSHA-256 digestで検証する。
-7. bundled cpmを使用して、Minillaと依存関係を`RUNNER_TEMP`配下の新しいdirectoryへinstallする。
+7. bundled cpmを使用して、Minillaと依存関係をRunner Tool Cache内のstaging directoryへinstallする。
 8. 生成された`minil` launcherを分離されたwrapperに置き換える。
-9. install先の`bin` directoryだけを`GITHUB_PATH`へ追加する。
+9. install結果を公開して完了markerを書き出し、install先の`bin` directoryだけを`GITHUB_PATH`へ追加する。
 
-install結果はRunner Tool Cacheや`actions/cache`には保存しません。Actionを呼び出すたびに新しいinstall先を作成します。
+## Runner Tool Cache
+
+`@actions/tool-cache`で使用されているtool/version/architectureのdirectory構成と、隣接する完了markerに従います。
+
+```text
+$RUNNER_TOOL_CACHE/minil/<normalized-minilla-version>/<arch>/
+$RUNNER_TOOL_CACHE/minil/<normalized-minilla-version>/<arch>.complete
+```
+
+たとえば`X64` runnerでMinilla `v3.2.0`をinstallする場合は、`minil/3.2.0/x64`を使用します。architectureは`x64`または`arm64`です。runner外などで`RUNNER_TOOL_CACHE`が未設定の場合は、`RUNNER_TEMP/setup-minil-tool-cache`へfallbackします。`RUNNER_TEMP`も未設定の場合はsystemの一時directoryを使用します。
+
+完了marker、wrapper、元のscript、`installation-id`が存在し、記録された識別情報が現在のinstall条件と一致する場合のみ再利用します。識別情報には選択されたPerlのpath、version、`archname`、runner OSとarchitecture、Minilla tarballのdigest、解決mode、snapshotのdigest、bundled cpmのdigest、bootstrap cpanfileのdigest、installerのdigestを記録します。
+
+未完了または条件が異なるentryは置き換えます。同じMinilla versionでもPerl環境が変わった場合に互換性のないinstall結果を再利用することはありません。各version/architectureのslotには1つの環境だけを保存します。self-hosted runnerでは同じTool Cache slotを並行job間で共有しないでください。
+
+最終directoryに隣接するstaging directoryでinstallし、installとwrapperの検証が成功してから完了markerを書き出します。一時作業fileと失敗したstaging directoryは終了時に削除します。`actions/cache`のrestore/saveは行いません。
 
 ## Perl環境の分離
 
@@ -92,7 +107,7 @@ cpmがCarton形式のsnapshotを読み込むには`Carton::Snapshot`が必要で
 
 Carton distributionのversionは固定します。Carton snapshot自体を読み込むparserをsnapshotからbootstrapすることはできないため、bootstrap時の依存関係は動的に解決します。
 
-一時的にinstallしたCarton、download file、cpmの作業fileはAction終了時に削除します。Minillaのinstallが完了しなかった場合は、そのinstall先も削除します。正常に完了したMinillaのinstall先はjob終了まで`RUNNER_TEMP`配下に残します。
+一時的にinstallしたCarton、download file、cpmの作業fileはAction終了時に削除します。Minillaのinstallが完了しなかった場合は、そのstaging directoryも削除します。正常に完了したMinillaのinstall先はRunner Tool Cacheに残します。
 
 ## bundled runtime
 
@@ -127,4 +142,5 @@ CIでは次の項目を検証します。
 - UbuntuおよびmacOSで選択したPerlを使用するdynamic install
 - GitHub-hosted UbuntuおよびmacOSのsystem Perlを使用するsnapshot生成とsnapshot-only install
 - 未対応Minilla versionの拒否
+- Tool Cacheのdirectory構成、完了marker、再利用、無効化、install失敗時のcleanup
 - fixture distributionに対する実際の`minil test`実行

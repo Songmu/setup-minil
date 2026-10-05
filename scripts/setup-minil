@@ -150,15 +150,23 @@ bootstrap_snapshot_runtime() {
   printf '%s' "$bootstrap_root/lib/perl5"
 }
 
+activate_installation() {
+  "$cache_root/bin/minil" --version >/dev/null
+  if [[ -n "${GITHUB_PATH:-}" ]]; then
+    printf '%s\n' "$cache_root/bin" >>"$GITHUB_PATH"
+  else
+    printf 'Add %s/bin to PATH\n' "$cache_root"
+  fi
+  write_output version "$requested_version"
+  write_output resolution-mode "$resolution_mode"
+}
+
 work_root=""
 install_root=""
-installation_ready=false
 
 cleanup() {
   [[ -z "$work_root" ]] || rm -rf -- "$work_root"
-  if [[ "$installation_ready" != true && -n "$install_root" ]]; then
-    rm -rf -- "$install_root"
-  fi
+  [[ -z "$install_root" ]] || rm -rf -- "$install_root"
 }
 trap cleanup EXIT
 
@@ -174,6 +182,9 @@ perl_archname="$("$perl_exec" -MConfig -e 'print $Config{archname}')"
 download_url="$(version_manifest_value "$requested_version" download_url)" ||
   fail "unsupported Minilla version: $requested_version"
 tarball_sha256="$(version_manifest_value "$requested_version" tarball_sha256)"
+distribution_version="$(version_manifest_value "$requested_version" distribution_version)"
+[[ "$distribution_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] ||
+  fail "manifest distribution_version must be a normalized semantic version"
 runner_os="$(normalize_os)"
 runner_arch="$(normalize_arch)"
 
@@ -201,7 +212,37 @@ fi
 temp_base="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
 mkdir -p "$temp_base"
 work_root="$(mktemp -d "$temp_base/setup-minil-work.XXXXXX")"
-install_root="$(mktemp -d "$temp_base/setup-minil-install.XXXXXX")"
+tool_cache="${RUNNER_TOOL_CACHE:-$temp_base/setup-minil-tool-cache}"
+cache_arch="$(safe_path_component "$runner_arch")"
+cache_root="$tool_cache/minil/$distribution_version/$cache_arch"
+complete_marker="$cache_root.complete"
+
+snapshot_sha256=""
+if [[ -n "$snapshot_path" ]]; then
+  snapshot_sha256="$(sha256_file "$snapshot_path")"
+fi
+printf '%s\n' \
+  "$perl_exec" "$perl_version" "$perl_archname" "$runner_os" "$runner_arch" \
+  "$tarball_sha256" "$resolution_mode" "$snapshot_sha256" \
+  "$(sha256_file "$ACTION_PATH/runtime/cpm")" \
+  "$(sha256_file "$ACTION_PATH/runtime/cpanfile")" \
+  "$(sha256_file "$0")" >"$work_root/installation-id"
+
+if [[ -f "$complete_marker" && -x "$cache_root/bin/minil" &&
+  -f "$cache_root/libexec/minil" && -f "$cache_root/installation-id" ]] &&
+  cmp -s "$work_root/installation-id" "$cache_root/installation-id"; then
+  printf 'setup-minil: reusing Tool Cache installation at %s\n' "$cache_root"
+  activate_installation
+  exit 0
+fi
+
+if [[ -e "$cache_root" || -e "$complete_marker" ]]; then
+  warning "Tool Cache entry is incomplete or does not match the selected environment; reinstalling"
+fi
+rm -f -- "$complete_marker"
+rm -rf -- "$cache_root"
+mkdir -p "$(dirname -- "$cache_root")"
+install_root="$(mktemp -d "$(dirname -- "$cache_root")/.$cache_arch.XXXXXX")"
 tarball="$work_root/Minilla-$requested_version.tar.gz"
 
 curl --fail --location --proto '=https' --tlsv1.2 \
@@ -241,13 +282,10 @@ mkdir -p "$install_root/libexec"
 mv "$install_root/bin/minil" "$install_root/libexec/minil"
 write_wrapper "$install_root/bin/minil" "$perl_exec"
 "$install_root/bin/minil" --version >/dev/null
-installation_ready=true
+cp "$work_root/installation-id" "$install_root/installation-id"
+mv "$install_root" "$cache_root"
+install_root=""
+"$cache_root/bin/minil" --version >/dev/null
+: >"$complete_marker"
 
-if [[ -n "${GITHUB_PATH:-}" ]]; then
-  printf '%s\n' "$install_root/bin" >>"$GITHUB_PATH"
-else
-  printf 'Add %s/bin to PATH\n' "$install_root"
-fi
-
-write_output version "$requested_version"
-write_output resolution-mode "$resolution_mode"
+activate_installation

@@ -3,8 +3,8 @@
 ## Unreleased
 
 - Add the initial `setup-minil` composite Action.
-- Install allowlisted Minilla releases into an isolated `RUNNER_TEMP`
-  directory.
+- Install allowlisted Minilla releases into an isolated Runner Tool Cache
+  directory and reuse matching completed installations.
 - Add dynamic dependency resolution and exact-environment snapshot support.
 - Bundle a verified self-contained cpm and bootstrap an exact Carton version
   only when snapshot resolution needs it.

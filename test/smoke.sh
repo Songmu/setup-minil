@@ -7,6 +7,7 @@ temp_root="$(mktemp -d)"
 trap 'rm -rf -- "$temp_root"' EXIT
 
 export RUNNER_TEMP="$temp_root/runner-temp"
+export RUNNER_TOOL_CACHE="$temp_root/tool-cache"
 mkdir -p "$RUNNER_TEMP"
 
 case "$(uname -s)" in
@@ -36,9 +37,16 @@ if [[ "${SETUP_MINIL_INTEGRATION:-false}" == "true" ]]; then
 
   bin_path="$(cat "$GITHUB_PATH")"
   "$bin_path/minil" --version | grep -q 'v3.2.0'
+  [[ "$bin_path" == "$RUNNER_TOOL_CACHE/minil/3.2.0/"*"/bin" ]]
+  [[ -f "${bin_path%/bin}.complete" ]]
   grep -q '^version=v3.2.0$' "$GITHUB_OUTPUT"
   grep -Eq '^resolution-mode=(snapshot|dynamic)$' "$GITHUB_OUTPUT"
   [[ "${PERL5LIB-}" == "$original_perl5lib" ]]
+
+  GITHUB_PATH="$temp_root/reused-path" \
+    INPUT_VERSION=v3.2.0 "$ROOT/scripts/setup-minil" >"$temp_root/reused-log"
+  grep -q 'reusing Tool Cache installation' "$temp_root/reused-log"
+  cmp "$temp_root/github-path" "$temp_root/reused-path"
 
   cp -R "$ROOT/test/fixtures/minimal-dist" "$temp_root/minimal-dist"
   (
