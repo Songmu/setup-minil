@@ -111,6 +111,8 @@ Actionは現在の環境からsnapshot pathを直接導出し、snapshotを使�
 
 完全一致するdirectoryが存在しない場合、Actionはwarningを出力し、cpmでCPANから依存関係を動的に解決します。
 
+CartonのbootstrapとMinillaのinstallでは、cpmを呼び出しごとの一時作業directory内で実行し、利用者の`cpanfile.snapshot`を読み込まないようにします。
+
 ## snapshot runtime
 
 cpmがCarton形式のsnapshotを読み込むには`Carton::Snapshot`が必要です。そのためsnapshot modeでは、Minillaをinstallする前に`runtime/cpanfile`で指定された正確なCarton versionを一時作業directoryへinstallします。
@@ -143,7 +145,7 @@ repositoryにはself-containedなcpmを`runtime/cpm`として同梱します。`
 6. 同一環境のsnapshotを置き換える。
 7. `scripts/check-snapshots`を実行する。
 
-`.github/workflows/update-snapshots.yml`はGitHub-hosted UbuntuおよびmacOS runner上で、それぞれのimageに含まれるsystem Perlを使用してこの処理を実行します。生成された各snapshotを実際のMinilla installで検証し、snapshotをまとめたDraft PRを作成します。
+`.github/workflows/update-snapshots.yml`はGitHub-hosted UbuntuおよびmacOS runner上で、それぞれのimageに含まれるsystem Perlを使用してこの処理を実行します。生成された各snapshotを実際のMinilla installで検証し、snapshotをまとめたDraft PRを作成します。snapshot生成とPR作成の両jobは、dispatchで選択したbranchに関係なくdefault branchをcheckoutし、同じdefault branchをPRのbaseとします。
 
 ## 継続的integration
 

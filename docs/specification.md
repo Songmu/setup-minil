@@ -151,6 +151,9 @@ the metadata before using the snapshot. There is no separate snapshot index.
 If no exact directory exists, the Action emits a warning and lets cpm resolve
 dependencies dynamically from CPAN.
 
+Both the Carton bootstrap and Minilla installation run cpm from the invocation's
+temporary working directory, so a caller's `cpanfile.snapshot` is not loaded.
+
 ## Snapshot runtime
 
 cpm needs `Carton::Snapshot` to read a Carton-format snapshot. Snapshot mode
@@ -198,7 +201,9 @@ with the Carton bootstrap requirement.
 `.github/workflows/update-snapshots.yml` runs this process on GitHub-hosted
 Ubuntu and macOS runners using each image's system Perl, verifies each
 generated snapshot with a real Minilla installation, and opens a Draft PR
-containing the merged snapshots.
+containing the merged snapshots. Both generation and PR creation check out the
+default branch regardless of the dispatch branch, and use that same default
+branch as the PR base.
 
 ## Continuous integration
 

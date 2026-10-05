@@ -118,14 +118,17 @@ bootstrap_snapshot_runtime() {
   local work_root="$2"
   local bootstrap_root="$work_root/carton"
 
-  "$perl_exec" "$ACTION_PATH/runtime/cpm" install \
-    "--cpanfile=$ACTION_PATH/runtime/cpanfile" \
-    --mirror=https://cpan.metacpan.org/ \
-    "--local-lib-contained=$bootstrap_root" \
-    --exclude-vendor \
-    "--home=$work_root/carton-cpm-home" \
-    --no-prebuilt \
-    --no-test ||
+  (
+    cd -- "$work_root" || fail "cannot enter temporary working directory"
+    "$perl_exec" "$ACTION_PATH/runtime/cpm" install \
+      "--cpanfile=$ACTION_PATH/runtime/cpanfile" \
+      --mirror=https://cpan.metacpan.org/ \
+      "--local-lib-contained=$bootstrap_root" \
+      --exclude-vendor \
+      "--home=$work_root/carton-cpm-home" \
+      --no-prebuilt \
+      --no-test
+  ) ||
     fail "Carton bootstrap installation failed"
 
   "$perl_exec" "-I$bootstrap_root/lib/perl5" -MCarton::Snapshot -e 1 ||
@@ -256,7 +259,10 @@ if [[ -n "$snapshot_path" ]]; then
     --no-default-resolvers
   )
 fi
-"${cpm_args[@]}"
+(
+  cd -- "$work_root" || fail "cannot enter temporary working directory"
+  "${cpm_args[@]}"
+)
 
 [[ -f "$install_root/bin/minil" ]] ||
   fail "cpm completed without installing bin/minil"
