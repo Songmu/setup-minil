@@ -96,7 +96,6 @@ else {
 
     my @args = (
         "--cpanfile=$work/cpanfile",
-        '--with-recommends',
         '--top-level-phase=runtime',
         '--show-build-log-on-failure',
     );

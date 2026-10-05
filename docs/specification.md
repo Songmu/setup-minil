@@ -40,8 +40,8 @@ The Action performs one installation step:
 4. Select an exact dependency snapshot when available.
 5. Reuse a matching completed Tool Cache installation when available.
 6. Otherwise, generate a cpanfile with an exact Minilla version requirement
-   and the recommendations in `runtime/minilla.cpanfile`, then install it with
-   bundled cpm and `--with-recommends` into a Tool Cache staging directory.
+   and the direct requirements in `runtime/minilla.cpanfile`, then install it
+   with bundled cpm into a Tool Cache staging directory.
 7. Replace the generated `minil` launcher with an isolated wrapper.
 8. Publish the installation, write its completion marker, and add only the
    installation's `bin` directory to `GITHUB_PATH`.
@@ -84,13 +84,13 @@ The Action does not restore or save `actions/cache` entries.
 `runtime/minilla.cpanfile` declares the recommended modules used by Minilla's
 distribution and release commands. This list follows the selected Minilla
 release's runtime recommendations and is maintained in the repository.
-The Action includes these modules by default with `--with-recommends`,
-without a public toggle.
+The Action declares these modules as direct requirements so cpm installs them
+without relying on recursive recommendation handling.
 It also requires `Module::Build::Tiny`, Minilla's default build backend, so
 `minil test` and `minil dist` do not depend on a preinstalled copy.
 
 The generated top-level cpanfile combines the exact Minilla version
-requirement with these recommendations, so cpm installs everything in one
+requirement with these direct requirements, so cpm installs everything in one
 invocation. The Action does not download or extract Minilla metadata itself.
 
 This includes `Software::License`, `Version::Next`, `CPAN::Uploader`, and
@@ -190,9 +190,9 @@ with the Carton bootstrap requirement.
 2. Always installs Carmel with bundled cpm into a temporary local-lib using the
    selected Perl, and invokes it with that interpreter rather than reusing a
    Carmel launcher on `PATH`.
-3. Generates a cpanfile with the exact Minilla version and promotes the
-   recommendations in `runtime/minilla.cpanfile` to explicit requirements,
-   so Carmel includes them in the snapshot.
+3. Generates a cpanfile with the exact Minilla version and the direct
+   requirements in `runtime/minilla.cpanfile`, so Carmel includes them in the
+   snapshot.
 4. Generates a Carton snapshot with the current system Perl.
 5. Writes exact environment metadata.
 6. Replaces the snapshot for that exact environment.

@@ -33,14 +33,15 @@ elsif ( $args{cpanfile} =~ /runtime\/cpanfile$/ ) {
     print {$fh} "package Carton::Snapshot; 1;\n";
 }
 else {
-    die "missing runtime recommendations\n" unless grep { $_ eq '--with-recommends' } @ARGV;
-    die "missing runtime phase\n"           unless $args{'top-level-phase'} eq 'runtime';
+    die "unexpected --with-recommends\n" if grep { $_ eq '--with-recommends' } @ARGV;
+    die "missing runtime phase\n" unless $args{'top-level-phase'} eq 'runtime';
     open my $input, '<', $args{cpanfile} or die $!;
     my $content = do { local $/; <$input> };
+    die "unexpected recommendations\n" if $content =~ /^recommends /m;
     my ($version) = $content =~ /requires 'Minilla', '== (v\d+\.\d+\.\d+)';/;
     die "missing requirements\n"
       unless $version
-      && $content =~ /recommends 'Software::License'/
+      && $content =~ /requires 'Software::License'/
       && $content =~ /requires 'Module::Build::Tiny'/;
     open my $fh, '>', "$root/bin/minil" or die $!;
     print {$fh} <<"PERL";

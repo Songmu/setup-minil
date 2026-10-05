@@ -38,7 +38,7 @@ Actionは1つのinstall stepで以下を実行します。
 3. 要求されたMinilla versionを正規化する。
 4. 利用可能であれば環境に完全一致する依存関係snapshotを選択する。
 5. 完了済みで条件が一致するTool Cacheがあれば再利用する。
-6. それ以外の場合はMinillaの正確なversion要求と`runtime/minilla.cpanfile`の推奨依存関係を含むcpanfileを生成し、bundled cpmと`--with-recommends`を使用してTool Cache内のstaging directoryへinstallする。
+6. それ以外の場合はMinillaの正確なversion要求と`runtime/minilla.cpanfile`の直接依存関係を含むcpanfileを生成し、bundled cpmを使用してTool Cache内のstaging directoryへinstallする。
 7. 生成された`minil` launcherを分離されたwrapperに置き換える。
 8. install結果を公開して完了markerを書き出し、install先の`bin` directoryだけを`GITHUB_PATH`へ追加する。
 
@@ -61,10 +61,10 @@ $RUNNER_TOOL_CACHE/minil/<normalized-minilla-version>/<arch>.complete
 
 ## 推奨依存関係
 
-`runtime/minilla.cpanfile`にはMinillaのdist・release commandで使用する推奨moduleを記載します。現在の一覧は選択したMinilla releaseのruntime推奨依存関係に合わせており、repository内で保守します。これらは`--with-recommends`でデフォルトinstallし、切り替え用の公開inputは設けません。
+`runtime/minilla.cpanfile`にはMinillaのdist・release commandで使用する推奨moduleを記載します。現在の一覧は選択したMinilla releaseのruntime推奨依存関係に合わせており、repository内で保守します。これらのmoduleは直接の`requires`として宣言し、cpmの再帰的な推奨依存関係処理に頼らずinstallします。
 また、Minillaのデフォルトbuild backendである`Module::Build::Tiny`を明示的に要求し、`minil test`と`minil dist`が事前installに依存しないようにします。
 
-最上位のcpanfileにMinillaの正確なversion要求とこれらの推奨依存関係をまとめることで、cpmを1回呼び出してinstallします。Action自身でMinillaのmetadataをdownload・展開することはありません。
+最上位のcpanfileにMinillaの正確なversion要求とこれらの直接依存関係をまとめることで、cpmを1回呼び出してinstallします。Action自身でMinillaのmetadataをdownload・展開することはありません。
 
 これには`Software::License`、`Version::Next`、`CPAN::Uploader`、Minillaが推奨するrelease test用moduleが含まれます。これらのmoduleの`requires`は通常どおり解決しますが、各module自身の`recommends`やMinillaの`suggests`を再帰的に有効にはしません。
 
@@ -139,7 +139,7 @@ repositoryにはself-containedなcpmを`runtime/cpm`として同梱します。`
 
 1. 要求されたMinilla versionを正規化する。
 2. 選択したPerlとbundled cpmを使用して、毎回一時local-libへCarmelをinstallする。PATH上の既存Carmelは再利用せず、同じPerlを指定して起動する。
-3. Minillaの正確なversionと`runtime/minilla.cpanfile`の推奨依存関係を含むcpanfileを生成する。推奨依存関係は明示的な`requires`に置き換え、Carmelがsnapshotに含めるようにする。
+3. Minillaの正確なversionと`runtime/minilla.cpanfile`の直接依存関係を含むcpanfileを生成し、Carmelがsnapshotに含めるようにする。
 4. 現在のsystem Perlを使用してCarton snapshotを生成する。
 5. 正確な環境metadataを書き出す。
 6. 同一環境のsnapshotを置き換える。

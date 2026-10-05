@@ -38,7 +38,7 @@ git config user.name "setup-minil test"
 git config user.email "setup-minil@example.invalid"
 git add .
 for command in test dist; do
-  "$bin_path/minil" "$command" 2>&1 | tee "$temp_root/minil-$command.log"
+  "$bin_path/minil" --no-auto-install "$command" 2>&1 | tee "$temp_root/minil-$command.log"
   grep -q 'Result: PASS' "$temp_root/minil-$command.log"
 done
 test -s Example-Minilla-Dist-0.01.tar.gz
