@@ -29,7 +29,6 @@ carton_version="$(perl -ne 'print $1 if /requires \x27Carton\x27, \x27== ([^\x27
 
 cp "$temp_root/cpm" "$ROOT/runtime/cpm"
 chmod +x "$ROOT/runtime/cpm"
-printf '%s  runtime/cpm\n' "$cpm_sha256" >"$ROOT/runtime/cpm.sha256"
 
 RUNTIME_CPM_VERSION="$CPM_VERSION" \
 RUNTIME_CPM_COMMIT="$CPM_COMMIT" \

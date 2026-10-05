@@ -10,65 +10,17 @@ inputs:
   version:
     description: Exact supported Minilla CPAN release
     default: v3.2.0
-  expected-sha256:
-    description: Optional additional SHA-256 assertion for the Minilla tarball
-    required: false
-  cache:
-    description: Restore and save snapshot-based installations
-    default: "false"
 
 outputs:
   version:
     description: Installed Minilla version
     value: ${{ steps.install.outputs.version }}
-  sha256:
-    description: Verified Minilla tarball SHA-256
-    value: ${{ steps.install.outputs.sha256 }}
-  perl-path:
-    description: Perl used to install Minilla
-    value: ${{ steps.install.outputs.perl-path }}
-  cache-path:
-    description: Runner Tool Cache version directory
-    value: ${{ steps.install.outputs.cache-path }}
-  cache-hit:
-    description: Whether actions/cache restored a valid installation
-    value: ${{ steps.install.outputs.persistent-cache-hit }}
-  tool-cache-hit:
-    description: Whether a valid Runner Tool Cache entry was reused
-    value: ${{ steps.install.outputs.tool-cache-hit }}
-  resolution-mode:
-    description: Dependency resolution mode, snapshot or dynamic
-    value: ${{ steps.install.outputs.resolution-mode }}
 
 runs:
   using: composite
   steps:
-    - id: prepare
-      shell: bash
-      env:
-        INPUT_VERSION: ${{ inputs.version }}
-        INPUT_CACHE: ${{ inputs.cache }}
-      run: '"${GITHUB_ACTION_PATH}/scripts/setup-minil" prepare'
-
-    - id: cache-restore
-      if: steps.prepare.outputs.cache-enabled == 'true'
-      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
-      with:
-        path: ${{ steps.prepare.outputs.cache-storage-path }}
-        key: ${{ steps.prepare.outputs.cache-key }}
-
     - id: install
       shell: bash
       env:
         INPUT_VERSION: ${{ inputs.version }}
-        INPUT_EXPECTED_SHA256: ${{ inputs.expected-sha256 }}
-        INPUT_CACHE: ${{ inputs.cache }}
-        PREPARED_STATE: ${{ steps.prepare.outputs.state-path }}
-        RESTORE_CACHE_HIT: ${{ steps.cache-restore.outputs.cache-hit }}
-      run: '"${GITHUB_ACTION_PATH}/scripts/setup-minil" install'
-
-    - if: steps.install.outputs.cache-save == 'true'
-      uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
-      with:
-        path: ${{ steps.prepare.outputs.cache-storage-path }}
-        key: ${{ steps.prepare.outputs.cache-key }}
+      run: '"${GITHUB_ACTION_PATH}/scripts/setup-minil"'

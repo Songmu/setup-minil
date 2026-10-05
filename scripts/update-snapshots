@@ -3,24 +3,19 @@ set -euo pipefail
 
 readonly ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 
-command -v carmel >/dev/null 2>&1 || {
-  printf 'scripts/update-snapshots requires Carmel\n' >&2
-  exit 1
-}
-
 version="${1:-}"
 [[ -n "$version" ]] || {
   printf 'usage: scripts/update-snapshots <allowlisted-version>\n' >&2
   exit 1
 }
 
-tool_version="$(perl -MJSON::PP -0777 -e '
+distribution_version="$(perl -MJSON::PP -0777 -e '
   my ($file, $version) = @ARGV;
   open my $fh, "<", $file or die "$file: $!";
   my $data = decode_json(do { local $/; <$fh> });
   die "unsupported Minilla version: $version\n"
     unless exists $data->{versions}{$version};
-  print $data->{versions}{$version}{tool_cache_version};
+  print $data->{versions}{$version}{distribution_version};
 ' "$ROOT/manifests/minilla.json" "$version")"
 
 runner_os="${RUNNER_OS:-$(uname -s)}"
@@ -34,13 +29,31 @@ case "$runner_arch" in
 esac
 perl_version="$(perl -MConfig -e 'print $Config{version}')"
 perl_archname="$(perl -MConfig -e 'print $Config{archname}')"
-directory="$version/$(printf '%s-%s-perl-%s' "$runner_os" "$runner_arch" "$perl_version" | tr '[:upper:]' '[:lower:]')"
+safe_archname="$(printf '%s' "$perl_archname" | tr '[:upper:]' '[:lower:]' | tr -c 'A-Za-z0-9_.-' '_')"
+directory="$version/$(printf '%s-%s-perl-%s-%s' \
+  "$runner_os" "$runner_arch" "$perl_version" "$safe_archname" |
+  tr '[:upper:]' '[:lower:]')"
 destination="$ROOT/snapshots/$directory"
 
 temp_root="$(mktemp -d)"
 trap 'rm -rf -- "$temp_root"' EXIT
+
+if ! command -v carmel >/dev/null 2>&1; then
+  carmel_root="$temp_root/carmel"
+  perl "$ROOT/runtime/cpm" install \
+    --mirror=https://cpan.metacpan.org/ \
+    "--local-lib-contained=$carmel_root" \
+    --exclude-vendor \
+    "--home=$temp_root/carmel-cpm-home" \
+    --no-prebuilt \
+    --no-test \
+    Carmel
+  export PATH="$carmel_root/bin:$PATH"
+  export PERL5LIB="$carmel_root/lib/perl5${PERL5LIB:+:$PERL5LIB}"
+fi
+
 cat >"$temp_root/cpanfile" <<EOF
-requires 'Minilla', '== $tool_version';
+requires 'Minilla', '== $distribution_version';
 EOF
 (
   cd "$temp_root"
@@ -51,6 +64,7 @@ EOF
   exit 1
 }
 
+rm -rf -- "$destination"
 mkdir -p "$destination"
 cp "$temp_root/cpanfile" "$destination/cpanfile"
 cp "$temp_root/cpanfile.snapshot" "$destination/cpanfile.snapshot"
@@ -74,7 +88,6 @@ perl -MJSON::PP -e '
   print {$fh} JSON::PP->new->canonical->pretty->encode($data);
 ' "$destination/environment.json"
 
-"$ROOT/scripts/rebuild-snapshot-index"
 "$ROOT/scripts/check-snapshots"
 
 if [[ -n "${GITHUB_OUTPUT:-}" ]]; then

@@ -28,24 +28,6 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
 
-      - name: Install Carmel with bundled cpm
-        shell: bash
-        run: |
-          set -euo pipefail
-          carmel_root="$RUNNER_TEMP/setup-minil-carmel"
-          perl runtime/cpm install \
-            --mirror=https://cpan.metacpan.org/ \
-            "--local-lib-contained=$carmel_root" \
-            --exclude-vendor \
-            "--home=$RUNNER_TEMP/setup-minil-carmel-cpm" \
-            --no-prebuilt \
-            --no-test \
-            Carmel
-          printf '%s\n' "$carmel_root/bin" >>"$GITHUB_PATH"
-          printf 'PERL5LIB=%s%s\n' \
-            "$carmel_root/lib/perl5" \
-            "${PERL5LIB:+:$PERL5LIB}" >>"$GITHUB_ENV"
-
       - name: Generate and verify snapshot
         id: snapshot
         shell: bash
@@ -59,7 +41,7 @@ jobs:
         run: |
           set -euo pipefail
           tar -czf "$RUNNER_TEMP/snapshot.tgz" \
-            '${{ format('snapshots/{0}', steps.snapshot.outputs.snapshot-path) }}'
+            "snapshots/${{ steps.snapshot.outputs.snapshot-path }}"
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
@@ -96,7 +78,6 @@ jobs:
             while IFS= read -r -d '' archive; do
               tar -xzf "$archive"
             done
-          ./scripts/rebuild-snapshot-index
           ./scripts/check-snapshots
 
       - name: Create Draft PR
