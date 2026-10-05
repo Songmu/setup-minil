@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+
+perl -MJSON::PP -e '
+  my ($root, $index_file) = @ARGV;
+  open my $fh, "<", $index_file or die "$index_file: $!";
+  my $index = decode_json(do { local $/; <$fh> });
+  for my $version (sort keys %$index) {
+    for my $fingerprint (sort keys %{$index->{$version}}) {
+      my $relative = $index->{$version}{$fingerprint};
+      my $snapshot = "$root/snapshots/$relative/cpanfile.snapshot";
+      my $environment = "$root/snapshots/$relative/environment.json";
+      -f $snapshot or die "missing snapshot: $snapshot\n";
+      -f $environment or die "missing environment metadata: $environment\n";
+      open my $env_fh, "<", $environment or die "$environment: $!";
+      my $env = decode_json(do { local $/; <$env_fh> });
+      "$env->{minilla_version}" eq "$version"
+        or die "version mismatch in $environment\n";
+    }
+  }
+' "$ROOT" "$ROOT/snapshots/index.json"

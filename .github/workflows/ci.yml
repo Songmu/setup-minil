@@ -1,0 +1,102 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - run: make test
+
+  dynamic-install:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            perl: "5.40"
+          - os: macos-latest
+            perl: "5.40"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - uses: shogo82148/actions-setup-perl@8b574cdc2dffdae49f803204a4f2b716a2fa1db7
+        with:
+          perl-version: ${{ matrix.perl }}
+
+      - id: setup
+        uses: ./
+        with:
+          cache: "false"
+
+      - name: Verify installation metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          test '${{ steps.setup.outputs.version }}' = 'v3.2.0'
+          test '${{ steps.setup.outputs.sha256 }}' = 'c90ea9ead89b595c582d5b569735c349e82d3378b310d35386ff336d3d5ae922'
+          test '${{ steps.setup.outputs.resolution-mode }}' = 'dynamic'
+          test '${{ steps.setup.outputs.cache-hit }}' = 'false'
+          minil --version | grep -F 'v3.2.0'
+          test -z "${PERL5LIB:-}"
+
+      - name: Verify Tool Cache reuse
+        id: reuse
+        uses: ./
+        with:
+          cache: "false"
+
+      - name: Check Tool Cache result
+        shell: bash
+        run: test '${{ steps.reuse.outputs.tool-cache-hit }}' = 'true'
+
+      - name: Exercise Minilla
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp -R test/fixtures/minimal-dist "$RUNNER_TEMP/minimal-dist"
+          cd "$RUNNER_TEMP/minimal-dist"
+          git init --quiet
+          git config user.name "setup-minil CI"
+          git config user.email "setup-minil@example.invalid"
+          git add .
+          minil test
+
+  rejected-inputs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Reject an unsupported version
+        id: unsupported
+        continue-on-error: true
+        uses: ./
+        with:
+          version: v0.0.0
+      - name: Check rejection
+        shell: bash
+        run: test '${{ steps.unsupported.outcome }}' = 'failure'
+
+      - name: Reject a mismatched digest assertion
+        id: digest
+        continue-on-error: true
+        uses: ./
+        with:
+          expected-sha256: invalid
+      - name: Check digest rejection
+        shell: bash
+        run: test '${{ steps.digest.outcome }}' = 'failure'

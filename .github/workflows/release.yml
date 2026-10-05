@@ -1,0 +1,23 @@
+name: Release checks
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - run: make integration
+      - name: Verify default version
+        shell: bash
+        run: |
+          set -euo pipefail
+          manifest_default="$(perl -MJSON::PP -0777 -e 'print decode_json(<>)->{default}' manifests/minilla.json)"
+          action_default="$(perl -0777 -ne 'print $1 if /version:\s*\n(?:[^\n]*\n)*?\s+default:\s*(\S+)/' action.yml)"
+          test "$manifest_default" = "$action_default"

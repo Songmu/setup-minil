@@ -1,0 +1,39 @@
+name: Snapshot canary
+
+on:
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  canary:
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Check committed snapshots
+        run: ./scripts/check-snapshots
+
+      - name: Verify dynamic fallback
+        id: setup
+        uses: ./
+        with:
+          cache: "true"
+
+      - name: Report current environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'resolution-mode=%s\n' '${{ steps.setup.outputs.resolution-mode }}'
+          printf 'perl=%s\n' '${{ steps.setup.outputs.perl-path }}'
+          perl -MConfig -e 'printf "perl-version=%s\narchname=%s\n", @Config{qw(version archname)}'
+          minil --version

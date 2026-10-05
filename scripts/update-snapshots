@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+
+sha256_text() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum | awk '{print $1}'
+  else
+    shasum -a 256 | awk '{print $1}'
+  fi
+}
+
+command -v carmel >/dev/null 2>&1 || {
+  printf 'scripts/update-snapshots requires Carmel\n' >&2
+  exit 1
+}
+
+version="${1:-}"
+[[ -n "$version" ]] || {
+  printf 'usage: scripts/update-snapshots <allowlisted-version>\n' >&2
+  exit 1
+}
+
+tool_version="$(perl -MJSON::PP -0777 -e '
+  my ($file, $version) = @ARGV;
+  open my $fh, "<", $file or die "$file: $!";
+  my $data = decode_json(do { local $/; <$fh> });
+  die "unsupported Minilla version: $version\n"
+    unless exists $data->{versions}{$version};
+  print $data->{versions}{$version}{tool_cache_version};
+' "$ROOT/manifests/minilla.json" "$version")"
+
+runner_os="${RUNNER_OS:-$(uname -s)}"
+case "$runner_os" in
+  Darwin) runner_os=macOS ;;
+esac
+runner_arch="${RUNNER_ARCH:-$(uname -m)}"
+case "$runner_arch" in
+  x86_64|amd64) runner_arch=X64 ;;
+  arm64|aarch64) runner_arch=ARM64 ;;
+esac
+perl_version="$(perl -MConfig -e 'print $Config{version}')"
+perl_archname="$(perl -MConfig -e 'print $Config{archname}')"
+fingerprint="$runner_os-$runner_arch-$perl_version-$perl_archname"
+arch_hash="$(printf '%s' "$perl_archname" | sha256_text | cut -c1-8)"
+directory="$version/$(printf '%s-%s-perl-%s-%s' "$runner_os" "$runner_arch" "$perl_version" "$arch_hash" | tr '[:upper:]' '[:lower:]')"
+destination="$ROOT/snapshots/$directory"
+
+temp_root="$(mktemp -d)"
+trap 'rm -rf -- "$temp_root"' EXIT
+cat >"$temp_root/cpanfile" <<EOF
+requires 'Minilla', '== $tool_version';
+EOF
+(
+  cd "$temp_root"
+  carmel install
+)
+[[ -f "$temp_root/cpanfile.snapshot" ]] || {
+  printf 'Carmel did not produce cpanfile.snapshot\n' >&2
+  exit 1
+}
+
+mkdir -p "$destination"
+cp "$temp_root/cpanfile" "$destination/cpanfile"
+cp "$temp_root/cpanfile.snapshot" "$destination/cpanfile.snapshot"
+CARMEL_VERSION="$(carmel version 2>/dev/null || carmel --version)" \
+RUNNER_OS_VALUE="$runner_os" \
+RUNNER_ARCH_VALUE="$runner_arch" \
+PERL_VERSION_VALUE="$perl_version" \
+PERL_ARCHNAME_VALUE="$perl_archname" \
+MINILLA_VERSION_VALUE="$version" \
+perl -MJSON::PP -e '
+  my ($path) = @ARGV;
+  my $data = {
+    runner_os => $ENV{RUNNER_OS_VALUE},
+    runner_arch => $ENV{RUNNER_ARCH_VALUE},
+    perl_version => $ENV{PERL_VERSION_VALUE},
+    perl_archname => $ENV{PERL_ARCHNAME_VALUE},
+    minilla_version => $ENV{MINILLA_VERSION_VALUE},
+    generator => { carmel_version => $ENV{CARMEL_VERSION} },
+  };
+  open my $fh, ">", $path or die "$path: $!";
+  print {$fh} JSON::PP->new->canonical->pretty->encode($data);
+' "$destination/environment.json"
+
+VERSION_VALUE="$version" \
+FINGERPRINT_VALUE="$fingerprint" \
+DIRECTORY_VALUE="$directory" \
+perl -MJSON::PP -0777 -i -pe '
+  BEGIN {
+    our ($version, $fingerprint, $directory) =
+      @ENV{qw(VERSION_VALUE FINGERPRINT_VALUE DIRECTORY_VALUE)};
+  }
+  my $data = decode_json($_);
+  $data->{$version}{$fingerprint} = $directory;
+  $_ = JSON::PP->new->canonical->pretty->encode($data);
+' "$ROOT/snapshots/index.json"
+
+"$ROOT/scripts/check-snapshots"

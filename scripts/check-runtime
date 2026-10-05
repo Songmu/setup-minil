@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+
+sha256_file() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  else
+    shasum -a 256 "$1" | awk '{print $1}'
+  fi
+}
+
+expected_cpm="$(perl -MJSON::PP -0777 -e 'print decode_json(<>)->{cpm}{sha256}' "$ROOT/runtime/manifest.json")"
+actual_cpm="$(sha256_file "$ROOT/runtime/cpm")"
+[[ "$actual_cpm" == "$expected_cpm" ]] || {
+  printf 'runtime/cpm digest mismatch: expected %s, got %s\n' "$expected_cpm" "$actual_cpm" >&2
+  exit 1
+}
+
+forbidden="$(find "$ROOT/runtime/lib/perl5" -type f \( \
+  -name '*.so' -o -name '*.bundle' -o -name '*.dylib' -o \
+  -name '.packlist' -o -name perllocal.pod \
+\) -print)"
+[[ -z "$forbidden" ]] || {
+  printf 'runtime contains forbidden generated or native files:\n%s\n' "$forbidden" >&2
+  exit 1
+}
+
+metadata_directories="$(find "$ROOT/runtime/lib/perl5" -type d -name .meta -print)"
+[[ -z "$metadata_directories" ]] || {
+  printf 'runtime contains generated install metadata:\n%s\n' "$metadata_directories" >&2
+  exit 1
+}
+
+perl -I"$ROOT/runtime/lib/perl5" -MCarton::Snapshot -e 1
+
+expected_tree="$(perl -MJSON::PP -0777 -e 'print decode_json(<>)->{runtime_tree_sha256}' "$ROOT/runtime/manifest.json")"
+actual_tree="$("$ROOT/scripts/runtime-tree-digest")"
+[[ "$actual_tree" == "$expected_tree" ]] || {
+  printf 'runtime tree digest mismatch: expected %s, got %s\n' "$expected_tree" "$actual_tree" >&2
+  exit 1
+}

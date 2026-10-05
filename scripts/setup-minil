@@ -1,0 +1,421 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly ACTION_PATH="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+readonly MANIFEST="$ACTION_PATH/manifests/minilla.json"
+readonly SNAPSHOT_INDEX="$ACTION_PATH/snapshots/index.json"
+
+fail() {
+  printf 'setup-minil: %s\n' "$*" >&2
+  exit 1
+}
+
+warning() {
+  printf '::warning::setup-minil: %s\n' "$*" >&2
+}
+
+write_output() {
+  local name="$1"
+  local value="$2"
+  if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
+    printf '%s=%s\n' "$name" "$value" >>"$GITHUB_OUTPUT"
+  else
+    printf '%s=%s\n' "$name" "$value"
+  fi
+}
+
+sha256_file() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  else
+    shasum -a 256 "$1" | awk '{print $1}'
+  fi
+}
+
+json_value() {
+  local file="$1"
+  local expression="$2"
+  perl -MJSON::PP -0777 -e '
+    my ($file, $expression) = @ARGV;
+    open my $fh, "<", $file or die "$file: $!";
+    my $value = decode_json(do { local $/; <$fh> });
+    for my $part (split /\./, $expression) {
+      die "missing JSON key: $expression\n"
+        unless ref($value) eq "HASH" && exists $value->{$part};
+      $value = $value->{$part};
+    }
+    die "JSON value is not scalar: $expression\n" if ref $value;
+    print $value;
+  ' "$file" "$expression"
+}
+
+version_manifest_value() {
+  local version="$1"
+  local field="$2"
+  perl -MJSON::PP -0777 -e '
+    my ($file, $version, $field) = @ARGV;
+    open my $fh, "<", $file or die "$file: $!";
+    my $data = decode_json(do { local $/; <$fh> });
+    die "unsupported Minilla version: $version\n"
+      unless ref($data->{versions}) eq "HASH" &&
+        ref($data->{versions}{$version}) eq "HASH" &&
+        exists $data->{versions}{$version}{$field};
+    my $value = $data->{versions}{$version}{$field};
+    die "JSON value is not scalar: versions.$version.$field\n" if ref $value;
+    print $value;
+  ' "$MANIFEST" "$version" "$field"
+}
+
+snapshot_index_value() {
+  local version="$1"
+  local fingerprint="$2"
+  perl -MJSON::PP -0777 -e '
+    my ($file, $version, $fingerprint) = @ARGV;
+    open my $fh, "<", $file or die "$file: $!";
+    my $data = decode_json(do { local $/; <$fh> });
+    exit 0 unless ref($data->{$version}) eq "HASH";
+    exit 0 unless exists $data->{$version}{$fingerprint};
+    my $value = $data->{$version}{$fingerprint};
+    exit 0 if ref $value;
+    print $value;
+  ' "$SNAPSHOT_INDEX" "$version" "$fingerprint"
+}
+
+normalize_os() {
+  case "${RUNNER_OS:-$(uname -s)}" in
+    Linux) printf 'Linux' ;;
+    macOS|Darwin) printf 'macOS' ;;
+    *) fail "unsupported operating system: ${RUNNER_OS:-$(uname -s)}" ;;
+  esac
+}
+
+normalize_arch() {
+  local value="${RUNNER_ARCH:-$(uname -m)}"
+  case "$value" in
+    X64|x86_64|amd64) printf 'X64' ;;
+    ARM64|aarch64|arm64) printf 'ARM64' ;;
+    *) fail "unsupported architecture: $value" ;;
+  esac
+}
+
+tool_arch() {
+  case "$1" in
+    X64) printf 'x64' ;;
+    ARM64) printf 'arm64' ;;
+    *) fail "unsupported tool cache architecture: $1" ;;
+  esac
+}
+
+validate_boolean() {
+  case "$1" in
+    true|false) ;;
+    *) fail "cache must be either \"true\" or \"false\"" ;;
+  esac
+}
+
+manifest_matches() {
+  local installed_manifest="$1"
+  [[ -f "$installed_manifest" ]] || return 1
+  perl -MJSON::PP -0777 -e '
+    my ($file, @pairs) = @ARGV;
+    open my $fh, "<", $file or exit 1;
+    my $data = eval { decode_json(do { local $/; <$fh> }) } or exit 1;
+    while (@pairs) {
+      my ($key, $expected) = splice @pairs, 0, 2;
+      exit 1 unless defined $data->{$key} && "$data->{$key}" eq "$expected";
+    }
+  ' "$installed_manifest" \
+    tool minil \
+    tool_version "$MINILLA_VERSION" \
+    tarball_sha256 "$TARBALL_SHA256" \
+    perl_version "$PERL_VERSION" \
+    perl_archname "$PERL_ARCHNAME" \
+    runner_os "$RUNNER_OS_NAME" \
+    runner_arch "$RUNNER_ARCH_NAME" \
+    resolution_mode "$RESOLUTION_MODE" \
+    snapshot_sha256 "$SNAPSHOT_SHA256"
+}
+
+installation_metadata_is_valid() {
+  local root="$1"
+  local marker="$2"
+  [[ -f "$marker" && -x "$root/bin/minil" && -f "$root/libexec/minil" ]] || return 1
+  manifest_matches "$root/manifest.json"
+}
+
+activate_existing_installation() {
+  local root="$1"
+  local marker="$2"
+  installation_metadata_is_valid "$root" "$marker" || return 1
+  write_wrapper "$root/bin/minil" "$PERL_EXEC"
+  write_install_manifest "$root/manifest.json"
+  "$root/bin/minil" --version >/dev/null 2>&1
+}
+
+load_state() {
+  [[ -n "${PREPARED_STATE:-}" && -f "$PREPARED_STATE" ]] ||
+    fail "prepared state is missing; run the prepare phase first"
+
+  PERL_EXEC="$(json_value "$PREPARED_STATE" perl_path)"
+  PERL_VERSION="$(json_value "$PREPARED_STATE" perl_version)"
+  PERL_ARCHNAME="$(json_value "$PREPARED_STATE" perl_archname)"
+  RUNNER_OS_NAME="$(json_value "$PREPARED_STATE" runner_os)"
+  RUNNER_ARCH_NAME="$(json_value "$PREPARED_STATE" runner_arch)"
+  MINILLA_VERSION="$(json_value "$PREPARED_STATE" minilla_version)"
+  TOOL_CACHE_VERSION="$(json_value "$PREPARED_STATE" tool_cache_version)"
+  DOWNLOAD_URL="$(json_value "$PREPARED_STATE" download_url)"
+  TARBALL_SHA256="$(json_value "$PREPARED_STATE" tarball_sha256)"
+  RESOLUTION_MODE="$(json_value "$PREPARED_STATE" resolution_mode)"
+  SNAPSHOT_PATH="$(json_value "$PREPARED_STATE" snapshot_path)"
+  SNAPSHOT_SHA256="$(json_value "$PREPARED_STATE" snapshot_sha256)"
+  CACHE_ENABLED="$(json_value "$PREPARED_STATE" cache_enabled)"
+  CACHE_PATH="$(json_value "$PREPARED_STATE" cache_path)"
+  COMPLETE_MARKER="$(json_value "$PREPARED_STATE" complete_marker)"
+}
+
+prepare() {
+  local requested_version="${INPUT_VERSION:-v3.2.0}"
+  local requested_cache="${INPUT_CACHE:-false}"
+  validate_boolean "$requested_cache"
+
+  command -v perl >/dev/null 2>&1 || fail "perl was not found on PATH"
+  local perl_exec
+  perl_exec="$(perl -MCwd=abs_path -e 'print abs_path($^X)')"
+  local perl_version
+  perl_version="$("$perl_exec" -MConfig -e 'print $Config{version}')"
+  local perl_archname
+  perl_archname="$("$perl_exec" -MConfig -e 'print $Config{archname}')"
+  "$perl_exec" -e 'exit($] >= 5.024 ? 0 : 1)' ||
+    fail "cpm v1 requires Perl 5.24 or later; selected Perl is $perl_version"
+
+  version_manifest_value "$requested_version" tool_cache_version >/dev/null 2>&1 ||
+    fail "unsupported Minilla version: $requested_version"
+
+  local runner_os runner_arch cache_arch tool_cache_version download_url tarball_sha256
+  runner_os="$(normalize_os)"
+  runner_arch="$(normalize_arch)"
+  cache_arch="$(tool_arch "$runner_arch")"
+  tool_cache_version="$(version_manifest_value "$requested_version" tool_cache_version)"
+  download_url="$(version_manifest_value "$requested_version" download_url)"
+  tarball_sha256="$(version_manifest_value "$requested_version" tarball_sha256)"
+
+  local fingerprint snapshot_relative snapshot_path snapshot_sha256 resolution_mode
+  fingerprint="$runner_os-$runner_arch-$perl_version-$perl_archname"
+  snapshot_relative="$(snapshot_index_value "$requested_version" "$fingerprint")"
+  snapshot_path=""
+  snapshot_sha256=""
+  resolution_mode="dynamic"
+  if [[ -n "$snapshot_relative" ]]; then
+    snapshot_path="$ACTION_PATH/snapshots/$snapshot_relative/cpanfile.snapshot"
+    [[ -f "$snapshot_path" ]] ||
+      fail "snapshot index points to a missing file: $snapshot_relative/cpanfile.snapshot"
+    snapshot_sha256="$(sha256_file "$snapshot_path")"
+    resolution_mode="snapshot"
+  else
+    warning "no exact dependency snapshot for $fingerprint; using dynamic resolution"
+  fi
+
+  local cache_enabled="false"
+  if [[ "$requested_cache" == "true" && "$resolution_mode" == "snapshot" ]]; then
+    cache_enabled="true"
+  elif [[ "$requested_cache" == "true" ]]; then
+    warning "persistent cache is available only for snapshot resolution"
+  fi
+
+  local tool_cache_root="${RUNNER_TOOL_CACHE:-${RUNNER_TEMP:-${TMPDIR:-/tmp}}/setup-minil-tool-cache}"
+  local cache_path="$tool_cache_root/minil/$tool_cache_version/$cache_arch"
+  local cache_storage_path="$tool_cache_root/minil/$tool_cache_version"
+  local complete_marker="$tool_cache_root/minil/$tool_cache_version/$cache_arch.complete"
+  local safe_archname="${perl_archname//[^A-Za-z0-9_.-]/_}"
+  local cache_key="setup-minil-v1-$runner_os-$runner_arch-$perl_version-$safe_archname-$requested_version-$tarball_sha256-$snapshot_sha256"
+  local state_dir="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/setup-minil-state"
+  mkdir -p "$state_dir"
+  local state_path="$state_dir/state-$$.json"
+
+  "$perl_exec" -MJSON::PP -e '
+    my ($path, @pairs) = @ARGV;
+    my %data;
+    while (@pairs) {
+      my ($key, $value) = splice @pairs, 0, 2;
+      $data{$key} = $value;
+    }
+    open my $fh, ">", $path or die "$path: $!";
+    print {$fh} JSON::PP->new->canonical->pretty->encode(\%data);
+  ' "$state_path" \
+    perl_path "$perl_exec" \
+    perl_version "$perl_version" \
+    perl_archname "$perl_archname" \
+    runner_os "$runner_os" \
+    runner_arch "$runner_arch" \
+    minilla_version "$requested_version" \
+    tool_cache_version "$tool_cache_version" \
+    download_url "$download_url" \
+    tarball_sha256 "$tarball_sha256" \
+    resolution_mode "$resolution_mode" \
+    snapshot_path "$snapshot_path" \
+    snapshot_sha256 "$snapshot_sha256" \
+    cache_enabled "$cache_enabled" \
+    cache_path "$cache_path" \
+    complete_marker "$complete_marker"
+
+  write_output state-path "$state_path"
+  write_output cache-enabled "$cache_enabled"
+  write_output cache-key "$cache_key"
+  write_output cache-path "$cache_path"
+  write_output cache-storage-path "$cache_storage_path"
+  write_output resolution-mode "$resolution_mode"
+}
+
+install() {
+  load_state
+  validate_boolean "${INPUT_CACHE:-false}"
+
+  local expected_sha256="${INPUT_EXPECTED_SHA256:-}"
+  if [[ -n "$expected_sha256" && "$expected_sha256" != "$TARBALL_SHA256" ]]; then
+    fail "expected-sha256 does not match the allowlisted digest for $MINILLA_VERSION"
+  fi
+
+  local persistent_cache_hit="false"
+  local tool_cache_hit="false"
+  local cache_save="false"
+  local restore_was_invalid="false"
+
+  if activate_existing_installation "$CACHE_PATH" "$COMPLETE_MARKER"; then
+    if [[ "${RESTORE_CACHE_HIT:-false}" == "true" ]]; then
+      persistent_cache_hit="true"
+    else
+      tool_cache_hit="true"
+      if [[ "$CACHE_ENABLED" == "true" ]]; then
+        cache_save="true"
+      fi
+    fi
+  else
+    if [[ "${RESTORE_CACHE_HIT:-false}" == "true" ]]; then
+      restore_was_invalid="true"
+      warning "restored cache failed validation; reinstalling without saving this cache key"
+    fi
+    rm -rf -- "$CACHE_PATH"
+    rm -f -- "$COMPLETE_MARKER"
+
+    local temp_root="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/setup-minil-$$"
+    local tarball="$temp_root/Minilla-$MINILLA_VERSION.tar.gz"
+    local stage="${CACHE_PATH}.tmp.$$"
+    mkdir -p "$temp_root" "$(dirname -- "$CACHE_PATH")"
+    rm -rf -- "$stage"
+    trap 'rm -rf -- "${temp_root:-}" "${stage:-}"' EXIT
+
+    curl --fail --location --proto '=https' --tlsv1.2 \
+      --retry 3 --output "$tarball" "$DOWNLOAD_URL"
+    local actual_sha256
+    actual_sha256="$(sha256_file "$tarball")"
+    [[ "$actual_sha256" == "$TARBALL_SHA256" ]] ||
+      fail "Minilla tarball SHA-256 mismatch: expected $TARBALL_SHA256, got $actual_sha256"
+
+    local -a cpm_args=(
+      "$PERL_EXEC"
+      "-I$ACTION_PATH/runtime/lib/perl5"
+      "$ACTION_PATH/runtime/cpm"
+      install
+      --mirror=https://cpan.metacpan.org/
+      "--local-lib-contained=$stage"
+      --exclude-vendor
+      "--home=$temp_root/cpm-home"
+      --no-prebuilt
+      --no-test
+    )
+    if [[ "$RESOLUTION_MODE" == "snapshot" ]]; then
+      cpm_args+=(
+        "--snapshot=$SNAPSHOT_PATH"
+        --resolver=snapshot
+        --no-default-resolvers
+      )
+    fi
+    cpm_args+=("$tarball")
+    "${cpm_args[@]}"
+
+    [[ -f "$stage/bin/minil" ]] || fail "cpm completed without installing bin/minil"
+    mkdir -p "$stage/libexec"
+    mv "$stage/bin/minil" "$stage/libexec/minil"
+    write_wrapper "$stage/bin/minil" "$PERL_EXEC"
+    "$stage/bin/minil" --version >/dev/null
+    write_install_manifest "$stage/manifest.json"
+
+    mv "$stage" "$CACHE_PATH"
+    : >"$COMPLETE_MARKER"
+    activate_existing_installation "$CACHE_PATH" "$COMPLETE_MARKER" ||
+      fail "published Tool Cache entry failed validation"
+
+    if [[ "$CACHE_ENABLED" == "true" && "$restore_was_invalid" == "false" ]]; then
+      cache_save="true"
+    fi
+  fi
+
+  if [[ -n "${GITHUB_PATH:-}" ]]; then
+    printf '%s\n' "$CACHE_PATH/bin" >>"$GITHUB_PATH"
+  else
+    printf 'Add %s/bin to PATH\n' "$CACHE_PATH"
+  fi
+
+  write_output version "$MINILLA_VERSION"
+  write_output sha256 "$TARBALL_SHA256"
+  write_output perl-path "$PERL_EXEC"
+  write_output cache-path "$CACHE_PATH"
+  write_output persistent-cache-hit "$persistent_cache_hit"
+  write_output tool-cache-hit "$tool_cache_hit"
+  write_output resolution-mode "$RESOLUTION_MODE"
+  write_output cache-save "$cache_save"
+}
+
+write_wrapper() {
+  local destination="$1"
+  local perl_exec="$2"
+  local escaped_perl="${perl_exec//\\/\\\\}"
+  escaped_perl="${escaped_perl//\"/\\\"}"
+  escaped_perl="${escaped_perl//\$/\\\$}"
+  escaped_perl="${escaped_perl//\`/\\\`}"
+  cat >"$destination" <<EOF
+#!/bin/sh
+set -eu
+
+root="\$(
+  CDPATH= cd -- "\$(dirname -- "\$0")/.." &&
+  pwd
+)"
+
+exec "$escaped_perl" \\
+  -I"\$root/lib/perl5" \\
+  "\$root/libexec/minil" \\
+  "\$@"
+EOF
+  chmod +x "$destination"
+}
+
+write_install_manifest() {
+  local destination="$1"
+  "$PERL_EXEC" -MJSON::PP -e '
+    my ($path, @pairs) = @ARGV;
+    my %data;
+    while (@pairs) {
+      my ($key, $value) = splice @pairs, 0, 2;
+      $data{$key} = $value;
+    }
+    open my $fh, ">", $path or die "$path: $!";
+    print {$fh} JSON::PP->new->canonical->pretty->encode(\%data);
+  ' "$destination" \
+    tool minil \
+    tool_version "$MINILLA_VERSION" \
+    tarball_sha256 "$TARBALL_SHA256" \
+    perl_path "$PERL_EXEC" \
+    perl_version "$PERL_VERSION" \
+    perl_archname "$PERL_ARCHNAME" \
+    runner_os "$RUNNER_OS_NAME" \
+    runner_arch "$RUNNER_ARCH_NAME" \
+    resolution_mode "$RESOLUTION_MODE" \
+    snapshot_sha256 "$SNAPSHOT_SHA256"
+}
+
+case "${1:-}" in
+  prepare) prepare ;;
+  install) install ;;
+  *) fail "usage: scripts/setup-minil <prepare|install>" ;;
+esac
