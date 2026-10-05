@@ -79,6 +79,11 @@ the same Minilla distribution fixture locally and in CI.
 Snapshot maintenance runs on GitHub-hosted Ubuntu and macOS runners through
 `.github/workflows/update-snapshots.yml`.
 
+Renovate tracks the default Minilla release, the exact Carton bootstrap
+requirement, and the bundled cpm tag. A cpm update changes its tag and commit
+in `runtime/manifest.json`; the `Update bundled cpm` workflow then refreshes
+the vendored executable and checksums on the Renovate pull request.
+
 Releases are prepared by tagpr. Merging its release pull request creates a
 SemVer tag and GitHub Release, then the tagpr workflow moves the `v0` tag to
 the new release for major-version Action references.
