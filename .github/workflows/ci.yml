@@ -39,6 +39,11 @@ jobs:
         with:
           perl-version: ${{ matrix.perl }}
 
+      - name: Record caller Perl environment
+        id: perl-env
+        shell: bash
+        run: echo "perl5lib=${PERL5LIB-}" >>"$GITHUB_OUTPUT"
+
       - id: setup
         uses: ./
         with:
@@ -46,6 +51,8 @@ jobs:
 
       - name: Verify installation metadata
         shell: bash
+        env:
+          EXPECTED_PERL5LIB: ${{ steps.perl-env.outputs.perl5lib }}
         run: |
           set -euo pipefail
           test '${{ steps.setup.outputs.version }}' = 'v3.2.0'
@@ -53,7 +60,7 @@ jobs:
           test '${{ steps.setup.outputs.resolution-mode }}' = 'dynamic'
           test '${{ steps.setup.outputs.cache-hit }}' = 'false'
           minil --version | grep -F 'v3.2.0'
-          test -z "${PERL5LIB:-}"
+          test "${PERL5LIB-}" = "$EXPECTED_PERL5LIB"
 
       - name: Verify Tool Cache reuse
         id: reuse

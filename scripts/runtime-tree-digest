@@ -14,8 +14,7 @@ fi
   find lib/perl5 -type f -print0 |
     LC_ALL=C sort -z |
     while IFS= read -r -d '' file; do
-      mode="$(stat -c '%a' "$file" 2>/dev/null || stat -f '%Lp' "$file")"
       digest="$("${hash_command[@]}" "$file" | awk '{print $1}')"
-      printf '%s %s %s\n' "$mode" "$digest" "$file"
+      printf '%s %s\n' "$digest" "$file"
     done
 ) | "${hash_command[@]}" | awk '{print $1}'
