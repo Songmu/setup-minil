@@ -16,9 +16,11 @@ Select Perl before running this action:
 
 ```yaml
 steps:
-  - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+  - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    with:
+      persist-credentials: false
 
-  - uses: shogo82148/actions-setup-perl@8b574cdc2dffdae49f803204a4f2b716a2fa1db7
+  - uses: shogo82148/actions-setup-perl@8b574cdc2dffdae49f803204a4f2b716a2fa1db7 # v1.44.2
     with:
       perl-version: "5.40"
 
