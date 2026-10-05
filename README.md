@@ -76,6 +76,10 @@ same Minilla distribution fixture locally and in CI.
 Snapshot maintenance runs on GitHub-hosted Ubuntu and macOS runners through
 `.github/workflows/update-snapshots.yml`.
 
+Releases are prepared by tagpr. Merging its release pull request creates a
+SemVer tag and GitHub Release, then the tagpr workflow moves the `v0` tag to
+the new release for major-version Action references.
+
 ## License
 
 This project is licensed under the MIT License. Bundled third-party components
