@@ -30,7 +30,7 @@ else
   bin_path="$SETUP_MINIL_BIN"
 fi
 export PATH="$bin_path:$PATH"
-"$bin_path/minil" --version 2>&1 | grep -Fq "${test_version#v}"
+"$bin_path/minil" --version | grep -Fq "${test_version#v}"
 cp -R "$ROOT/t/fixtures/minimal-dist" "$temp_root/minimal-dist"
 cd "$temp_root/minimal-dist"
 git init --quiet
