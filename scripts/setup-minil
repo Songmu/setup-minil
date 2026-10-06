@@ -35,7 +35,7 @@ my $cache = "$tool_cache/minil/$distribution_version/$cache_arch";
 my $installation_in_progress = 0;
 
 END {
-    my $status = $?;
+    local $?;
     if ($installation_in_progress) {
         if ( -e "$cache.complete" ) {
             unlink "$cache.complete" or warn "cannot remove completion marker: $cache.complete: $!\n";
@@ -43,7 +43,6 @@ END {
         remove_tree( $cache, { error => \my $errors } );
         warn "cannot remove incomplete Tool Cache entry: $cache\n" if @$errors;
     }
-    $? = $status;
 }
 
 my @identity_files = qw(
