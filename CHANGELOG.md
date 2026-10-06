@@ -1,5 +1,12 @@
 # Changelog
 
+## [v0.0.2](https://github.com/Songmu/setup-minil/compare/v0.0.1...v0.0.2) - 2026-10-06
+
+- fix: install Minilla directly into the final Tool Cache path by @Songmu in https://github.com/Songmu/setup-minil/pull/15
+- Centralize default Minilla version in runtime manifest by @Songmu in https://github.com/Songmu/setup-minil/pull/17
+- Automate snapshots for Minilla version updates by @Songmu in https://github.com/Songmu/setup-minil/pull/18
+- Fix Perl LSP warnings in SetupMinil.pm by @Songmu in https://github.com/Songmu/setup-minil/pull/19
+
 ## [v0.0.1](https://github.com/Songmu/setup-minil/commits/v0.0.1) - 2026-10-05
 
 - Implement setup-minil action by @Songmu in https://github.com/Songmu/setup-minil/pull/1
