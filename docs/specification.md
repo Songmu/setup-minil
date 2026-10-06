@@ -244,6 +244,10 @@ Installer and maintenance scripts use the selected Perl's core modules. The
 offline regression suite in `t/` shares a cpm fixture; integration checks exercise
 the same Minilla distribution fixture locally and in CI.
 
+The shared `scripts/SetupMinil.pm` module exports helpers only when explicitly
+requested, for example `use SetupMinil qw(read_file)` or
+`perl -I scripts -MSetupMinil=default_version -e 'print default_version()'`.
+
 ## Releases
 
 Releases are prepared by tagpr. Merging its release pull request creates a

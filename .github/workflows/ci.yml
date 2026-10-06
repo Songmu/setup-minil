@@ -43,7 +43,7 @@ jobs:
 
       - name: Read the default Minilla version
         id: version
-        run: perl -I scripts -MSetupMinil -e 'output("version", default_version())'
+        run: perl -I scripts -MSetupMinil=output,default_version -e 'output("version", default_version())'
 
       - name: Generate an exact dependency snapshot
         if: matrix.resolution == 'snapshot'
@@ -57,7 +57,7 @@ jobs:
         env:
           INPUT_VERSION: ${{ steps.version.outputs.version }}
         run: |
-          perl -I scripts -MSetupMinil -e '
+          perl -I scripts -MSetupMinil=environment,check_snapshot,snapshot_path -e '
             my $env = environment($ENV{INPUT_VERSION});
             check_snapshot("./snapshots/" . snapshot_path($env), $env);
           '

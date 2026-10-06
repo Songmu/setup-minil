@@ -87,7 +87,7 @@ jobs:
         env:
           INPUT_VERSION: ${{ inputs.version }}
         run: |
-          perl -I scripts -MSetupMinil -e '
+          perl -I scripts -MSetupMinil=output,environment,default_version -e '
             output("version", environment($ENV{INPUT_VERSION} || default_version())->{minilla_version});
           '
           echo "ref=$(git rev-parse HEAD)" >>"$GITHUB_OUTPUT"
