@@ -157,6 +157,23 @@ workflowのversion inputを省略した場合は、checkoutしたmanifestの`min
 `.github/renovate.json5`でRenovateを設定し、`runtime/manifest.json`のMinillaのデフォルトrelease、`runtime/cpanfile`のCarton要件、`runtime/manifest.json`のbundled cpmのtagとcommitを更新します。cpm更新workflowはcpmの項目が変わった場合にのみ、同梱実行ファイルとchecksumを更新します。
 同一repositoryのRenovate PRがMinillaのデフォルトversionと対象releaseのsnapshotだけを変更する場合、snapshot workflowはPRのhead commitからUbuntuおよびmacOSのsnapshotを生成・検証します。snapshotをまとめて同じPR branchへcommitし、CIを起動します。他のruntime項目や無関係なfileの変更は拒否し、Minillaのデフォルトversionが変わらないPRでは生成をskipします。過去のreleaseのsnapshotは保持します。
 
+## 開発
+
+```sh
+make test
+make integration
+```
+
+`make test`はruntime、snapshot、scriptの検査後、`prove -v t`でoffline回帰testを実行します。`prove -v t`を直接実行することもできます。`make integration`は同じ検査後に`t/smoke.sh`を実行し、実際のMinilla installとdistribution commandを検証します。
+
+installerと保守scriptは選択したPerlのcore moduleを使用します。`t/`のoffline回帰testでは共通のcpm fixtureを使用し、integration検査ではlocalとCIで同じMinilla distribution fixtureを使用します。
+
+## release
+
+releaseはtagprで準備します。release PRをmergeするとSemVer tagとGitHub Releaseが作成され、`.github/workflows/tagpr.yml`がmajor-version tag（現在は`v0`）を新しいreleaseへ移動します。
+
+Actionは移動するmajor-version tag、正確なrelease tag、完全なcommit SHAで参照できます。再現可能なworkflowのためには、完全なcommit SHAでの固定を推奨します。
+
 ## 継続的integration
 
 CIでは次の項目を検証します。

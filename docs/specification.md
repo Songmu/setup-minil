@@ -228,6 +228,32 @@ the same PR branch and dispatches CI. Other runtime changes or unrelated files
 are rejected; PRs without a default Minilla version change skip generation.
 Snapshots for older releases are retained.
 
+## Development
+
+```sh
+make test
+make integration
+```
+
+`make test` runs runtime, snapshot, and script checks followed by the offline
+regression suite with `prove -v t`. You can also run `prove -v t` directly.
+`make integration` runs the same checks followed by `t/smoke.sh`, which performs
+a real Minilla installation and exercises distribution commands.
+
+Installer and maintenance scripts use the selected Perl's core modules. The
+offline regression suite in `t/` shares a cpm fixture; integration checks exercise
+the same Minilla distribution fixture locally and in CI.
+
+## Releases
+
+Releases are prepared by tagpr. Merging its release pull request creates a
+SemVer tag and GitHub Release, then `.github/workflows/tagpr.yml` moves the
+major-version tag (currently `v0`) to the new release.
+
+Users can reference the Action by its moving major-version tag, an exact release
+tag, or a full commit SHA. Pinning to a full commit SHA is recommended for
+reproducible workflows.
+
 ## Continuous integration
 
 CI covers:
