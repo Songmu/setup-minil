@@ -168,6 +168,8 @@ make integration
 
 installerと保守scriptは選択したPerlのcore moduleを使用します。`t/`のoffline回帰testでは共通のcpm fixtureを使用し、integration検査ではlocalとCIで同じMinilla distribution fixtureを使用します。
 
+共通moduleの`scripts/SetupMinil.pm`は明示的に指定されたhelperだけをexportします。たとえば`use SetupMinil qw(read_file)`や`perl -I scripts -MSetupMinil=default_version -e 'print default_version()'`で指定します。
+
 ## release
 
 releaseはtagprで準備します。release PRをmergeするとSemVer tagとGitHub Releaseが作成され、`.github/workflows/tagpr.yml`がmajor-version tag（現在は`v0`）を新しいreleaseへ移動します。

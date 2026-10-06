@@ -3,7 +3,8 @@ use strict;
 use warnings;
 use FindBin;
 use lib "$FindBin::Bin/../scripts";
-use SetupMinil;
+use SetupMinil qw(write_file read_file environment snapshot_path);
+use Cwd           qw(abs_path);
 use File::Copy     qw(cp);
 use File::Basename qw(basename);
 use File::Glob     qw(bsd_glob);
@@ -59,6 +60,61 @@ sub rejects {
     my ( $status,  $text )    = invoke(@command);
     ok( $status && $text =~ $pattern, "rejects $pattern" ) or diag $text;
 }
+
+subtest 'shared module helpers' => sub {
+    succeeds(
+        '-I', "$root/scripts", '-MSetupMinil', '-e',
+        'die "read_file exported by default\n" if defined &main::read_file'
+    );
+
+    for my $content ( '', "first line\nsecond line\n" ) {
+        my $path = "$root/read-file";
+        write_file( $path, $content );
+        is( read_file($path), $content, 'read_file returns the entire file, including empty files' );
+    }
+
+    my @cases = (
+        [
+            'run', 'run($^X, "-e", q{print join "|", @ARGV}, "arg one", "arg two")',
+            'arg one|arg two', 'run preserves command arguments',
+        ],
+        [
+            'run_in',
+            'my $before = Cwd::getcwd(); '
+              . 'run_in($ARGV[0], $^X, "-MCwd", "-e", q{print Cwd::getcwd()}); '
+              . 'die "working directory changed\n" unless Cwd::getcwd() eq $before',
+            abs_path("$root/temp"), 'run_in changes and restores the working directory',
+        ],
+        [
+            'run_in',
+            'my $before = Cwd::getcwd(); '
+              . 'eval { run_in($ARGV[0], $^X, "-e", "exit 7") }; '
+              . 'die "missing command failure\n" unless $@ =~ /command failed/; '
+              . 'die "working directory changed\n" unless Cwd::getcwd() eq $before; '
+              . 'print "restored\n"',
+            "restored\n", 'run_in restores the working directory after command failure',
+        ],
+        [
+            'run_quiet',
+            'run_quiet($^X, "-e", q{print "hidden\n"}); print "restored\n"',
+            "restored\n", 'run_quiet suppresses command output and restores stdout',
+        ],
+        [
+            'run_quiet',
+            'eval { run_quiet($^X, "-e", "exit 7") }; '
+              . 'die "missing command failure\n" unless $@ =~ /command failed/; '
+              . 'print "restored\n"',
+            "restored\n", 'run_quiet restores stdout after command failure',
+        ],
+    );
+    for my $case (@cases) {
+        my ( $helper, $code, $expected, $description ) = @$case;
+        my ( $status, $text ) =
+          invoke( '-I', "$root/scripts", "-MSetupMinil=$helper", '-e', $code, "$root/temp" );
+        is( $status, 0, "$description: exit status" ) or diag $text;
+        is( $text, $expected, $description );
+    }
+};
 
 my $setup    = "$root/scripts/setup-minil";
 my $checker  = "$root/scripts/check-snapshots";
@@ -217,7 +273,7 @@ subtest 'manifest version selection' => sub {
     write_file( $manifest_path, '{"minilla":{"version":"v9.8.7"}}' );
 
     my ( $status, $version ) =
-      invoke( '-I', "$root/scripts", '-MSetupMinil', '-e', 'print default_version()' );
+      invoke( '-I', "$root/scripts", '-MSetupMinil=default_version', '-e', 'print default_version()' );
     is( $status, 0, 'read default from a Perl one-liner' );
     is( $version, 'v9.8.7', 'read the fixture manifest rather than the repository default' );
 

@@ -3,7 +3,7 @@ use strict;
 use warnings;
 use FindBin;
 use lib $FindBin::Bin;
-use SetupMinil;
+use SetupMinil qw(read_file default_version digest run_quiet);
 use JSON::PP qw(decode_json);
 
 my $manifest = decode_json( read_file("$SetupMinil::ROOT/runtime/manifest.json") );

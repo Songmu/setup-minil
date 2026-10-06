@@ -9,7 +9,7 @@ use File::Basename qw(dirname);
 use File::Path     qw(make_path);
 use JSON::PP qw(decode_json);
 
-our @EXPORT = qw(
+our @EXPORT_OK = qw(
   read_file write_file digest
   run run_in run_quiet cpm
   default_version environment snapshot_path check_snapshot output
@@ -22,7 +22,9 @@ sub read_file {
     my ($path) = @_;
     open my $fh, '<', $path or die "$path: $!\n";
     local $/;
-    return <$fh>;
+    my $content = <$fh>;
+    close $fh or die "$path: $!\n";
+    return $content;
 }
 
 sub write_file {
@@ -39,24 +41,28 @@ sub digest {
 }
 
 sub run {
-    ( system { $_[0] } @_ ) == 0 or die "setup-minil: command failed (@_): $?\n";
+    my (@command) = @_;
+    ( system { $command[0] } @command ) == 0
+      or die "setup-minil: command failed (@command): $?\n";
 }
 
 sub run_in {
-    my $directory = shift;
+    my ( $directory, @command ) = @_;
     my $previous  = getcwd();
     chdir $directory or die "$directory: $!\n";
-    my $status = system { $_[0] } @_;
+    my $status = system { $command[0] } @command;
     chdir $previous or die "$previous: $!\n";
-    $status == 0    or die "setup-minil: command failed (@_): $status\n";
+    $status == 0    or die "setup-minil: command failed (@command): $status\n";
 }
 
 sub run_quiet {
+    my (@command) = @_;
     open my $saved, '>&', \*STDOUT    or die "saving stdout: $!\n";
     open STDOUT,    '>',  '/dev/null' or die "/dev/null: $!\n";
-    my $status = system { $_[0] } @_;
+    my $status = system { $command[0] } @command;
     open STDOUT, '>&', $saved or die "restoring stdout: $!\n";
-    $status == 0 or die "setup-minil: command failed (@_): $status\n";
+    close $saved or die "closing saved stdout: $!\n";
+    $status == 0 or die "setup-minil: command failed (@command): $status\n";
 }
 
 sub cpm {

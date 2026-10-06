@@ -3,7 +3,10 @@ use strict;
 use warnings;
 use FindBin;
 use lib $FindBin::Bin;
-use SetupMinil;
+use SetupMinil qw(
+  environment default_version snapshot_path check_snapshot
+  write_file read_file digest cpm run run_quiet output
+);
 use File::Path     qw(make_path remove_tree);
 use File::Temp     ();
 

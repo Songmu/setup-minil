@@ -3,7 +3,7 @@ use strict;
 use warnings;
 use FindBin;
 use lib $FindBin::Bin;
-use SetupMinil;
+use SetupMinil qw(check_snapshot);
 use File::Glob qw(bsd_glob);
 
 for my $directory ( bsd_glob("$SetupMinil::ROOT/snapshots/*/*") ) {
