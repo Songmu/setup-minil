@@ -41,9 +41,9 @@ The Action performs one installation step:
 5. Reuse a matching completed Tool Cache installation when available.
 6. Otherwise, generate a cpanfile with an exact Minilla version requirement
    and the direct requirements in `runtime/minilla.cpanfile`, then install it
-   with bundled cpm into a Tool Cache staging directory.
+   with bundled cpm directly into the final Tool Cache directory.
 7. Replace the generated `minil` launcher with an isolated wrapper.
-8. Publish the installation, write its completion marker, and add only the
+8. Verify the wrapper, write the installation's completion marker, and add only the
    installation's `bin` directory to `GITHUB_PATH`.
 
 ## Runner Tool Cache
@@ -74,9 +74,10 @@ version. Only one environment is stored in each version/architecture slot.
 Self-hosted runners must not share this Tool Cache slot between concurrent
 jobs.
 
-Installation is staged beside the final directory and the completion marker
-is written only after a successful installation and wrapper check.
-Temporary working files and failed staging directories are removed on exit.
+Installation uses the final directory directly, so installed modules do not
+need to support relocation. The completion marker is written only after a
+successful installation and wrapper check. Temporary working files and failed
+installations are removed on exit.
 The Action does not restore or save `actions/cache` entries.
 
 ## Recommended dependencies
@@ -165,7 +166,7 @@ resolved dynamically because a Carton snapshot cannot bootstrap the parser
 needed to read itself.
 
 The temporary Carton installation and cpm working files are
-removed when the Action exits. An incomplete Minilla staging directory is also
+removed when the Action exits. An incomplete Minilla installation is also
 removed. A completed Minilla installation remains in the Runner Tool Cache.
 
 ## Bundled runtime

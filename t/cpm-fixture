@@ -5,7 +5,6 @@ die "wrong Perl\n" unless $^X eq $ENV{FIXTURE_PERL};
 die "caller snapshot leaked\n" if -f 'cpanfile.snapshot';
 open my $log, '>>', $ENV{CPM_LOG} or die $!;
 print {$log} "@ARGV\n";
-die "simulated installation failure\n" if $ENV{FAIL_INSTALL};
 my %args;
 
 for my $argument (@ARGV) {
@@ -15,6 +14,7 @@ for my $argument (@ARGV) {
 }
 my $root = $args{'local-lib-contained'} or die "missing local-lib\n";
 make_path( "$root/bin", "$root/lib/perl5/Carton" );
+die "simulated installation failure\n" if $ENV{FAIL_INSTALL};
 if ( grep { $_ eq 'Carmel' } @ARGV ) {
     open my $fh, '>', "$root/bin/carmel" or die $!;
     print {$fh} <<'PERL';
@@ -43,9 +43,15 @@ else {
       unless $version
       && $content =~ /requires 'Software::License'/
       && $content =~ /requires 'Module::Build::Tiny'/;
+    open my $module, '>', "$root/lib/perl5/InstalledPath.pm" or die $!;
+    print {$module} "package InstalledPath; our \$ROOT = q{$root}; 1;\n";
+    close $module or die $!;
     open my $fh, '>', "$root/bin/minil" or die $!;
     print {$fh} <<"PERL";
+use InstalledPath;
+die "installation directory moved\\n" unless -f "\$InstalledPath::ROOT/lib/perl5/InstalledPath.pm";
 die "wrong wrapper Perl\\n" unless \$^X eq \$ENV{FIXTURE_PERL};
+die "simulated wrapper failure\\n" if \$ENV{FAIL_WRAPPER};
 print "Minilla $version\\n";
 PERL
 }

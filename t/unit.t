@@ -76,7 +76,13 @@ sub setup {
 }
 
 setup( ++$installs );
-ok( -f "$cache.complete" && -f "$cache/libexec/minil", 'published Tool Cache entry' );
+ok( -f "$cache.complete" && -f "$cache/libexec/minil", 'completed Tool Cache entry' );
+like(
+    read_file("$root/cpm-log"),
+    qr/--local-lib-contained=\Q$cache\E --home=/,
+    'installed directly into final Tool Cache directory'
+);
+ok( -f "$cache/lib/perl5/InstalledPath.pm", 'installed dependency retained' );
 is( read_file("$root/path"), "$cache/bin\n", 'only isolated bin exported' );
 like(
     read_file("$root/output"),
@@ -123,9 +129,29 @@ unlink "$cache.complete" or die $!;
     rejects( qr/simulated installation failure/, $setup );
     ++$installs;
 }
-ok( !-e $cache && !-e "$cache.complete", 'failed installation not published' );
+ok( !-e $cache && !-e "$cache.complete", 'failed installation cleaned without completion marker' );
 is_deeply( [ bsd_glob("$root/temp/*"), bsd_glob("$root/cache/minil/3.2.0/.*??????") ],
     [], 'failure cleanup' );
+write_file( "$cache/partial-installation", 'incomplete' );
+setup( ++$installs );
+ok( !-e "$cache/partial-installation", 'partial installation removed before retry' );
+
+unlink "$cache.complete" or die $!;
+{
+    local $ENV{FAIL_WRAPPER} = 1;
+    rejects( qr/simulated wrapper failure/, $setup );
+    ++$installs;
+}
+ok( !-e $cache && !-e "$cache.complete", 'wrapper failure cleans incomplete installation' );
+is_deeply( [ bsd_glob("$root/temp/*") ], [], 'wrapper failure cleans working files' );
+setup( ++$installs );
+
+{
+    local $ENV{FAIL_WRAPPER} = 1;
+    rejects( qr/simulated wrapper failure/, $setup );
+}
+ok( -f "$cache.complete" && -f "$cache/libexec/minil", 'reused installation is not removed on failure' );
+setup($installs);
 
 {
     local $ENV{RUNNER_TOOL_CACHE};

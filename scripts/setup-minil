@@ -4,7 +4,6 @@ use warnings;
 use FindBin;
 use lib $FindBin::Bin;
 use SetupMinil;
-use File::Basename qw(dirname);
 use File::Path     qw(make_path remove_tree);
 use File::Temp     ();
 
@@ -33,6 +32,19 @@ my $tool_cache = $ENV{RUNNER_TOOL_CACHE} || "$temp/setup-minil-tool-cache";
 my $distribution_version = substr($version, 1);
 my $cache_arch = lc($env->{runner_arch});
 my $cache = "$tool_cache/minil/$distribution_version/$cache_arch";
+my $installation_in_progress = 0;
+
+END {
+    my $status = $?;
+    if ($installation_in_progress) {
+        if ( -e "$cache.complete" ) {
+            unlink "$cache.complete" or warn "cannot remove completion marker: $cache.complete: $!\n";
+        }
+        remove_tree( $cache, { error => \my $errors } );
+        warn "cannot remove incomplete Tool Cache entry: $cache\n" if @$errors;
+    }
+    $? = $status;
+}
 
 my @identity_files = qw(
   runtime/cpm
@@ -78,12 +90,8 @@ else {
     remove_tree( $cache, { error => \my $errors } );
     die "cannot remove Tool Cache entry: $cache\n" if @$errors;
 
-    make_path( dirname($cache) );
-    my $stage = File::Temp->newdir(
-        '.' . lc( $env->{runner_arch} ) . '.XXXXXX',
-        DIR     => dirname($cache),
-        CLEANUP => 1
-    );
+    $installation_in_progress = 1;
+    make_path($cache);
 
     my @perl_args;
     if ( $mode eq 'snapshot' ) {
@@ -105,27 +113,27 @@ else {
           '--resolver=snapshot',
           '--no-default-resolvers';
     }
-    cpm( "$stage", "$work/cpm-home", \@perl_args, @args );
+    cpm( $cache, "$work/cpm-home", \@perl_args, @args );
 
-    -f "$stage/bin/minil" or die "setup-minil: cpm completed without installing bin/minil\n";
-    make_path("$stage/libexec");
-    rename "$stage/bin/minil", "$stage/libexec/minil" or die "moving minil: $!\n";
+    -f "$cache/bin/minil" or die "setup-minil: cpm completed without installing bin/minil\n";
+    make_path("$cache/libexec");
+    rename "$cache/bin/minil", "$cache/libexec/minil" or die "moving minil: $!\n";
     my $perl = $SetupMinil::PERL;
     $perl =~ s/([\\\"\$\`])/\\$1/g;
-    write_file( "$stage/bin/minil", <<"SH" );
+    write_file( "$cache/bin/minil", <<"SH" );
 #!/bin/sh
 set -eu
 root="\$(CDPATH= cd -- "\$(dirname -- "\$0")/.." && pwd)"
 exec "$perl" -I"\$root/lib/perl5" "\$root/libexec/minil" "\$@"
 SH
-    chmod 0755, "$stage/bin/minil" or die "chmod minil: $!\n";
-    run_quiet( "$stage/bin/minil", '--version' );
-    write_file( "$stage/installation-id", $identity );
-    rename "$stage", $cache or die "publishing installation: $!\n";
+    chmod 0755, "$cache/bin/minil" or die "chmod minil: $!\n";
+    run_quiet( "$cache/bin/minil", '--version' );
+    write_file( "$cache/installation-id", $identity );
 }
 
 run_quiet( "$cache/bin/minil", '--version' );
 write_file( "$cache.complete", '' ) unless $reused;
+$installation_in_progress = 0;
 if ( $ENV{GITHUB_PATH} ) {
     write_file( $ENV{GITHUB_PATH}, "$cache/bin\n", '>>' );
 }
