@@ -26,6 +26,7 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       (github.event.pull_request.user.login == 'renovate[bot]' &&
        contains(github.event.pull_request.labels.*.name, 'dependency:minilla') &&
+       (github.event.action != 'labeled' || github.event.label.name == 'dependency:minilla') &&
        github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 10
