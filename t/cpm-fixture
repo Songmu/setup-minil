@@ -33,7 +33,6 @@ elsif ( $args{cpanfile} =~ /runtime\/cpanfile$/ ) {
     print {$fh} "package Carton::Snapshot; 1;\n";
 }
 else {
-    die "unexpected --with-recommends\n" if grep { $_ eq '--with-recommends' } @ARGV;
     open my $input, '<', $args{cpanfile} or die $!;
     my $content = do { local $/; <$input> };
     die "unexpected recommendations\n" if $content =~ /^recommends /m;
