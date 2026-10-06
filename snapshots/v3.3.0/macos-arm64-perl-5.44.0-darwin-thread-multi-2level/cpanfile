@@ -1,0 +1,12 @@
+requires 'Minilla', '== v3.3.0';
+requires 'Module::Build::Tiny';
+
+requires 'Version::Next';
+requires 'Pod::Escapes';
+requires 'CPAN::Uploader';
+requires 'Software::License', '0.103010';
+requires 'Test::Pod';
+requires 'Test::Spellunker', 'v0.2.7';
+requires 'Test::MinimumVersion::Fast', '0.04';
+requires 'Test::CPAN::Meta';
+requires 'Test::PAUSE::Permissions';
