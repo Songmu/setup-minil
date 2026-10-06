@@ -104,7 +104,6 @@ else {
 
     my @args = (
         "--cpanfile=$work/cpanfile",
-        '--top-level-phase=runtime',
         '--show-build-log-on-failure',
     );
     if ( $mode eq 'snapshot' ) {

@@ -34,7 +34,6 @@ elsif ( $args{cpanfile} =~ /runtime\/cpanfile$/ ) {
 }
 else {
     die "unexpected --with-recommends\n" if grep { $_ eq '--with-recommends' } @ARGV;
-    die "missing runtime phase\n" unless $args{'top-level-phase'} eq 'runtime';
     open my $input, '<', $args{cpanfile} or die $!;
     my $content = do { local $/; <$input> };
     die "unexpected recommendations\n" if $content =~ /^recommends /m;
