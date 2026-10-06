@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.0.3](https://github.com/Songmu/setup-minil/compare/v0.0.2...v0.0.3) - 2026-10-06
+
+- Update dependency Minilla to v3.3.0 by @renovate[bot] in https://github.com/Songmu/setup-minil/pull/20
+- Label Renovate dependency workflows by @Songmu in https://github.com/Songmu/setup-minil/pull/21
+
 ## [v0.0.2](https://github.com/Songmu/setup-minil/compare/v0.0.1...v0.0.2) - 2026-10-06
 
 - fix: install Minilla directly into the final Tool Cache path by @Songmu in https://github.com/Songmu/setup-minil/pull/15
