@@ -1,0 +1,10 @@
+{
+   "generator" : {
+      "carmel_version" : "Carmel version v0.1.56"
+   },
+   "minilla_version" : "v3.3.1",
+   "perl_archname" : "darwin-thread-multi-2level",
+   "perl_version" : "5.44.0",
+   "runner_arch" : "ARM64",
+   "runner_os" : "macOS"
+}
