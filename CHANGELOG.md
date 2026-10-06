@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.0.4](https://github.com/Songmu/setup-minil/compare/v0.0.3...v0.0.4) - 2026-10-06
+
+- Handle Minilla version output on stderr by @Songmu in https://github.com/Songmu/setup-minil/pull/24
+- Update dependency Minilla to v3.3.1 by @renovate[bot] in https://github.com/Songmu/setup-minil/pull/23
+
 ## [v0.0.3](https://github.com/Songmu/setup-minil/compare/v0.0.2...v0.0.3) - 2026-10-06
 
 - Update dependency Minilla to v3.3.0 by @renovate[bot] in https://github.com/Songmu/setup-minil/pull/20
