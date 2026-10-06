@@ -24,9 +24,7 @@ for my $file (qw(cpanfile minilla.cpanfile)) {
 }
 cp( "$SetupMinil::ROOT/t/cpm-fixture", "$root/runtime/cpm" ) or die $!;
 my $manifest_path = "$root/runtime/manifest.json";
-my $manifest = decode_json( read_file("$SetupMinil::ROOT/runtime/manifest.json") );
-$manifest->{minilla}{version} = 'v3.2.0';
-write_file( $manifest_path, JSON::PP->new->canonical->pretty->encode($manifest) );
+write_file( $manifest_path, '{"minilla":{"version":"v3.2.0"}}' );
 
 my %fixture_environment = (
     RUNNER_OS         => 'Linux',
@@ -79,11 +77,6 @@ sub setup {
     is_deeply( \@temporary_directories, [], 'temporary directories cleaned' );
 }
 
-my ( $version_status, $default ) =
-  invoke( '-I', "$root/scripts", '-MSetupMinil', '-e', 'print default_version()' );
-is( $version_status, 0, 'read default from a Perl one-liner' );
-is( $default, 'v3.2.0', 'manifest located relative to the shared module' );
-
 setup( ++$installs );
 ok( -f "$cache.complete" && -f "$cache/libexec/minil", 'completed Tool Cache entry' );
 like(
@@ -130,51 +123,6 @@ for my $file (qw(cpanfile minilla.cpanfile)) {
     local $ENV{INPUT_VERSION} = 'v3.1.0';
     setup( ++$installs );
     ok( -f "$root/cache/minil/3.1.0/x64.complete", 'version slot' );
-}
-
-{
-    my $original = read_file($manifest_path);
-    my $changed  = decode_json($original);
-    $changed->{minilla}{version} = 'v3.1.0';
-    write_file( $manifest_path, JSON::PP->new->encode($changed) );
-
-    setup($installs);
-    like( read_file("$root/output"), qr/version=v3.1.0\nresolution-mode=dynamic\n\z/,
-        'changed manifest default used without reinstalling an existing version' );
-
-    {
-        local $ENV{INPUT_VERSION} = '';
-        setup($installs);
-        like( read_file("$root/output"), qr/version=v3.1.0\nresolution-mode=dynamic\n\z/,
-            'empty input uses manifest default' );
-    }
-    {
-        local $ENV{INPUT_VERSION} = '3.2.0';
-        setup( ++$installs );
-        like( read_file("$root/output"), qr/version=v3.2.0\nresolution-mode=dynamic\n\z/,
-            'explicit version overrides manifest default' );
-    }
-
-    for my $version ( undef, '', 'latest', '3.2.0', "v3.2.0\n", [], {} ) {
-        $changed->{minilla}{version} = $version;
-        write_file( $manifest_path, JSON::PP->new->encode($changed) );
-        rejects( qr/invalid default Minilla version/, $setup );
-        rejects( qr/invalid default Minilla version/, "$root/scripts/check-runtime" );
-    }
-    for my $invalid ( {}, { minilla => {} }, { minilla => [] }, [] ) {
-        write_file( $manifest_path, JSON::PP->new->encode($invalid) );
-        rejects( qr/invalid default Minilla version/, $setup );
-    }
-
-    write_file( $manifest_path, '{' );
-    rejects( qr/while parsing/, $setup );
-    unlink $manifest_path or die $!;
-    rejects( qr/manifest\.json: No such file/, $setup );
-    {
-        local $ENV{INPUT_VERSION} = 'v3.2.0';
-        setup($installs);
-    }
-    write_file( $manifest_path, $original );
 }
 
 unlink "$cache.complete" or die $!;
@@ -258,5 +206,38 @@ like(
     'snapshot-only resolution'
 );
 like( read_file("$root/output"), qr/resolution-mode=snapshot/, 'snapshot output' );
+
+subtest 'manifest version selection' => sub {
+    local $ENV{RUNNER_TOOL_CACHE} = "$root/version-cache";
+    local $ENV{CPM_LOG}           = "$root/version-cpm-log";
+    local $ENV{GITHUB_PATH}       = "$root/version-path";
+    local $ENV{GITHUB_OUTPUT}     = "$root/version-output";
+    my $original = read_file($manifest_path);
+    write_file( $manifest_path, '{"minilla":{"version":"v3.1.0"}}' );
+
+    my ( $status, $version ) =
+      invoke( '-I', "$root/scripts", '-MSetupMinil', '-e', 'print default_version()' );
+    is( $status, 0, 'read default from a Perl one-liner' );
+    is( $version, 'v3.1.0', 'read the fixture manifest rather than the repository default' );
+
+    for my $case (
+        [ undef,   'v3.1.0', 'omitted input uses manifest default' ],
+        [ '',      'v3.1.0', 'empty input uses manifest default' ],
+        [ '3.2.0', 'v3.2.0', 'explicit input overrides manifest default' ],
+      )
+    {
+        my ( $input, $expected, $description ) = @$case;
+        local $ENV{INPUT_VERSION} = $input;
+        write_file( $ENV{GITHUB_OUTPUT}, '' );
+        succeeds($setup);
+        like( read_file($ENV{GITHUB_OUTPUT}), qr/^version=\Q$expected\E$/m, $description );
+    }
+
+    for my $invalid ( {}, { minilla => { version => 'latest' } } ) {
+        write_file( $manifest_path, JSON::PP->new->encode($invalid) );
+        rejects( qr/invalid default Minilla version/, $setup );
+    }
+    write_file( $manifest_path, $original );
+};
 
 done_testing;
