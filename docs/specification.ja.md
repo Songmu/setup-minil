@@ -148,14 +148,14 @@ repositoryにはself-containedなcpmを`runtime/cpm`として同梱します。`
 6. 同一環境のsnapshotを置き換える。
 7. `scripts/check-snapshots`を実行する。
 
-`.github/workflows/update-snapshots.yml`はGitHub-hosted UbuntuおよびmacOS runner上で、それぞれのimageに含まれるsystem Perlを使用してこの処理を実行します。生成された各snapshotを実際のMinilla installで検証し、snapshotをまとめたDraft PRを作成します。snapshot生成とPR作成の両jobは、dispatchで選択したbranchに関係なくdefault branchをcheckoutし、同じdefault branchをPRのbaseとします。
+`.github/workflows/update-snapshots.yml`はGitHub-hosted UbuntuおよびmacOS runner上で、それぞれのimageに含まれるsystem Perlを使用してこの処理を実行します。生成された各snapshotを実際のMinilla installで検証し、手動実行時はsnapshotをまとめたDraft PRを作成します。手動実行ではdispatchで選択したbranchに関係なくdefault branchを使用し、同じdefault branchをPRのbaseとします。すべてのjobは生成前に確定した同一のsource commitを使用します。
 
 workflowのversion inputを省略した場合は、checkoutしたmanifestの`minilla.version`を使用します。解決したversionはsnapshotの検証とPR作成にも引き継ぎます。
 
 ## 依存関係の更新
 
 `.github/renovate.json5`でRenovateを設定し、`runtime/manifest.json`のMinillaのデフォルトrelease、`runtime/cpanfile`のCarton要件、`runtime/manifest.json`のbundled cpmのtagとcommitを更新します。cpm更新workflowはcpmの項目が変わった場合にのみ、同梱実行ファイルとchecksumを更新します。
-既存のsnapshotは各releaseの記録として残し、Minillaのデフォルトreleaseを変更しても書き換えません。
+同一repositoryのRenovate PRがMinillaのデフォルトversionと対象releaseのsnapshotだけを変更する場合、snapshot workflowはPRのhead commitからUbuntuおよびmacOSのsnapshotを生成・検証します。snapshotをまとめて同じPR branchへcommitし、CIを起動します。他のruntime項目や無関係なfileの変更は拒否し、Minillaのデフォルトversionが変わらないPRでは生成をskipします。過去のreleaseのsnapshotは保持します。
 
 ## 継続的integration
 
