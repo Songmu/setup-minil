@@ -38,9 +38,9 @@ Actionは1つのinstall stepで以下を実行します。
 3. 要求されたMinilla versionを正規化する。
 4. 利用可能であれば環境に完全一致する依存関係snapshotを選択する。
 5. 完了済みで条件が一致するTool Cacheがあれば再利用する。
-6. それ以外の場合はMinillaの正確なversion要求と`runtime/minilla.cpanfile`の直接依存関係を含むcpanfileを生成し、bundled cpmを使用してTool Cache内のstaging directoryへinstallする。
+6. それ以外の場合はMinillaの正確なversion要求と`runtime/minilla.cpanfile`の直接依存関係を含むcpanfileを生成し、bundled cpmを使用してTool Cacheの最終directoryへ直接installする。
 7. 生成された`minil` launcherを分離されたwrapperに置き換える。
-8. install結果を公開して完了markerを書き出し、install先の`bin` directoryだけを`GITHUB_PATH`へ追加する。
+8. wrapperを検証して完了markerを書き出し、install先の`bin` directoryだけを`GITHUB_PATH`へ追加する。
 
 ## Runner Tool Cache
 
@@ -57,7 +57,7 @@ $RUNNER_TOOL_CACHE/minil/<normalized-minilla-version>/<arch>.complete
 
 未完了または条件が異なるentryは置き換えます。同じMinilla versionでもPerl環境が変わった場合に互換性のないinstall結果を再利用することはありません。各version/architectureのslotには1つの環境だけを保存します。self-hosted runnerでは同じTool Cache slotを並行job間で共有しないでください。
 
-最終directoryに隣接するstaging directoryでinstallし、installとwrapperの検証が成功してから完了markerを書き出します。一時作業fileと失敗したstaging directoryは終了時に削除します。`actions/cache`のrestore/saveは行いません。
+最終directoryへ直接installするため、installされたmoduleがdirectoryの移動に対応している必要はありません。installとwrapperの検証が成功してから完了markerを書き出します。一時作業fileと失敗したinstall結果は終了時に削除します。`actions/cache`のrestore/saveは行いません。
 
 ## 推奨依存関係
 
@@ -119,7 +119,7 @@ cpmがCarton形式のsnapshotを読み込むには`Carton::Snapshot`が必要で
 
 Carton distributionのversionは固定します。Carton snapshot自体を読み込むparserをsnapshotからbootstrapすることはできないため、bootstrap時の依存関係は動的に解決します。
 
-一時的にinstallしたCartonとcpmの作業fileはAction終了時に削除します。Minillaのinstallが完了しなかった場合は、そのstaging directoryも削除します。正常に完了したMinillaのinstall先はRunner Tool Cacheに残します。
+一時的にinstallしたCartonとcpmの作業fileはAction終了時に削除します。Minillaのinstallが完了しなかった場合は、そのinstall先も削除します。正常に完了したMinillaのinstall先はRunner Tool Cacheに残します。
 
 ## bundled runtime
 
