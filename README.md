@@ -35,7 +35,7 @@ Pinning this action to a full commit SHA is recommended.
 
 | Input | Default | Description |
 |---|---|---|
-| `version` | `v3.2.0` | Exact Minilla release, in `vX.Y.Z` or `X.Y.Z` form |
+| `version` | `minilla.version` in [`runtime/manifest.json`](runtime/manifest.json) | Exact Minilla release, in `vX.Y.Z` or `X.Y.Z` form |
 
 | Output | Description |
 |---|---|
@@ -77,12 +77,14 @@ offline regression suite in `t/` shares a cpm fixture; integration checks exerci
 the same Minilla distribution fixture locally and in CI.
 
 Snapshot maintenance runs on GitHub-hosted Ubuntu and macOS runners through
-`.github/workflows/update-snapshots.yml`.
+`.github/workflows/update-snapshots.yml`. Omitting its version input uses the
+default Minilla release from `runtime/manifest.json`.
 
-Renovate tracks the default Minilla release, the exact Carton bootstrap
-requirement, and the bundled cpm tag. A cpm update changes its tag and commit
-in `runtime/manifest.json`; the `Update bundled cpm` workflow then refreshes
-the vendored executable and checksums on the Renovate pull request.
+Renovate is configured in `.github/renovate.json5`. It tracks the default
+Minilla release in `runtime/manifest.json`, the exact Carton bootstrap
+requirement in `runtime/cpanfile`, and the bundled cpm tag. A cpm update changes
+its tag and commit in `runtime/manifest.json`; the `Update bundled cpm` workflow
+then refreshes the vendored executable and checksums on the Renovate pull request.
 
 Releases are prepared by tagpr. Merging its release pull request creates a
 SemVer tag and GitHub Release, then the tagpr workflow moves the `v0` tag to

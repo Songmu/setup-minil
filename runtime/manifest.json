@@ -10,5 +10,8 @@
       "sha256" : "2e7cdae8f84a673384d40e2486aa236955b7f69547d66f9920564c05b330f9e0",
       "source" : "https://raw.githubusercontent.com/skaji/cpm/1e93312a5e801b1f3a27182309a8e62c16e9d7c5/cpm",
       "version" : "v1.1.5"
+   },
+   "minilla" : {
+      "version" : "v3.2.0"
    }
 }

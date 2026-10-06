@@ -5,6 +5,7 @@
   ],
   "enabledManagers": [
     "cpanfile",
+    "custom.jsonata",
     "custom.regex"
   ],
   "ignorePaths": [
@@ -13,19 +14,14 @@
   ],
   "customManagers": [
     {
-      "customType": "regex",
-      "description": "Track the Minilla release used by the action and its tests",
+      "customType": "jsonata",
+      "description": "Track the default Minilla release in the runtime manifest",
+      "fileFormat": "json",
       "managerFilePatterns": [
-        "/^action\\.yml$/",
-        "/^README\\.md$/",
-        "/^docs/specification(?:\\.ja)?\\.md$/",
-        "/^\\.github/workflows/(?:ci|update-snapshots)\\.yml$/"
+        "/^runtime/manifest\\.json$/"
       ],
       "matchStrings": [
-        "default: (?<currentValue>v\\d+\\.\\d+\\.\\d+)",
-        "update-snapshots (?<currentValue>v\\d+\\.\\d+\\.\\d+)",
-        "outputs\\.version \\}\\}' = '(?<currentValue>v\\d+\\.\\d+\\.\\d+)'",
-        "\\| `version` \\| `(?<currentValue>v\\d+\\.\\d+\\.\\d+)`"
+        "minilla.{ \"currentValue\": version }"
       ],
       "depNameTemplate": "Minilla",
       "datasourceTemplate": "cpan",
@@ -44,15 +40,6 @@
       "datasourceTemplate": "github-tags",
       "versioningTemplate": "semver",
       "autoReplaceStringTemplate": "\"cpm\" : {\n      \"commit\" : \"{{{newDigest}}}\",\n      \"sha256\" : \"0000000000000000000000000000000000000000000000000000000000000000\",\n      \"source\" : \"https://raw.githubusercontent.com/skaji/cpm/{{{newDigest}}}/cpm\",\n      \"version\" : \"{{{newValue}}}\"\n   }"
-    }
-  ],
-  "packageRules": [
-    {
-      "description": "Keep all Minilla release references in one pull request",
-      "matchPackageNames": [
-        "Minilla"
-      ],
-      "groupName": "Minilla release"
     }
   ]
 }

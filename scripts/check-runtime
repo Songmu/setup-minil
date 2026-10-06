@@ -7,6 +7,7 @@ use SetupMinil;
 use JSON::PP qw(decode_json);
 
 my $manifest = decode_json( read_file("$SetupMinil::ROOT/runtime/manifest.json") );
+default_version();
 digest("$SetupMinil::ROOT/runtime/cpm") eq $manifest->{cpm}{sha256}
   or die "runtime/cpm digest mismatch\n";
 
