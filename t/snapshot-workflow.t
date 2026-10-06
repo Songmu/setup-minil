@@ -86,6 +86,8 @@ for my $case (
         local $ENV{GITHUB_OUTPUT} = "$root/output";
         my ( $status, $text ) = execute( $repo, 'bash', '-euo', 'pipefail', '-c', $guard );
         is( !!$status, !!$failure, 'guard exit status' ) or diag $text;
+        like( $text, qr/Invalid Minilla version: latest/, 'invalid version reports an explicit error' )
+          if $name eq 'invalid version';
         if ( defined $changed ) {
             is( read_file("$root/output"), "minilla-changed=$changed\n", 'generation decision' );
         }
