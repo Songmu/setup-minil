@@ -1,6 +1,11 @@
 name: Update snapshots
 
 on:
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
   workflow_dispatch:
     inputs:
       version:
@@ -9,19 +14,87 @@ on:
         required: false
 
 concurrency:
-  group: update-snapshots-${{ inputs.version || 'default' }}
+  group: update-snapshots-${{ github.event.pull_request.number || inputs.version || 'default' }}
   cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
+  prepare:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.user.login == 'renovate[bot]' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      changed: ${{ steps.runtime.outputs.minilla-changed }}
+      ref: ${{ steps.version.outputs.ref }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.event.repository.default_branch }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify the pull request only changes Minilla snapshot files
+        if: github.event_name == 'pull_request'
+        id: runtime
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          git fetch --no-tags origin "$BASE_REF"
+
+          base_commit="$(git merge-base "origin/$BASE_REF" HEAD)"
+          base_manifest="$(git show "$base_commit:runtime/manifest.json")"
+          base_version="$(jq -r '.minilla.version' <<<"$base_manifest")"
+          current_version="$(jq -r '.minilla.version' runtime/manifest.json)"
+          if [[ "$base_version" == "$current_version" ]]; then
+            echo "minilla-changed=false" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          base_runtime="$(jq -cS 'del(.minilla.version)' <<<"$base_manifest")"
+          current_runtime="$(jq -cS 'del(.minilla.version)' runtime/manifest.json)"
+          if [[ "$base_runtime" != "$current_runtime" ]]; then
+            echo "Unexpected runtime changes in Minilla update." >&2
+            exit 1
+          fi
+
+          VERSION="${current_version#v}"
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          while IFS= read -r file; do
+            case "$file" in
+              runtime/manifest.json|snapshots/v"$VERSION"/*)
+                ;;
+              *)
+                echo "Unexpected file in Minilla update: $file" >&2
+                exit 1
+                ;;
+            esac
+          done < <(git diff --name-only "origin/$BASE_REF...HEAD")
+
+          echo "minilla-changed=true" >>"$GITHUB_OUTPUT"
+
+      - name: Resolve the Minilla version and source commit
+        if: github.event_name == 'workflow_dispatch' || steps.runtime.outputs.minilla-changed == 'true'
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          perl -I scripts -MSetupMinil -e '
+            output("version", environment($ENV{INPUT_VERSION} || default_version())->{minilla_version});
+          '
+          echo "ref=$(git rev-parse HEAD)" >>"$GITHUB_OUTPUT"
+
   generate:
+    needs: prepare
+    if: github.event_name == 'workflow_dispatch' || needs.prepare.outputs.changed == 'true'
     permissions:
       contents: read
     timeout-minutes: 30
-    outputs:
-      version: ${{ steps.version.outputs.version }}
     strategy:
       fail-fast: false
       matrix:
@@ -32,21 +105,12 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.repository.default_branch }}
+          ref: ${{ needs.prepare.outputs.ref }}
           persist-credentials: false
-
-      - name: Resolve the Minilla version
-        id: version
-        env:
-          INPUT_VERSION: ${{ inputs.version }}
-        run: |
-          perl -I scripts -MSetupMinil -e '
-            output("version", environment($ENV{INPUT_VERSION} || default_version())->{minilla_version});
-          '
 
       - name: Generate and verify snapshot
         env:
-          INPUT_VERSION: ${{ steps.version.outputs.version }}
+          INPUT_VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           VERSION="${INPUT_VERSION#v}"
           [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
@@ -61,22 +125,25 @@ jobs:
           path: snapshots
           if-no-files-found: error
 
-  create-pull-request:
-    needs: generate
+  publish:
+    needs:
+      - prepare
+      - generate
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
+      actions: write
       contents: write
       pull-requests: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.repository.default_branch }}
+          ref: ${{ needs.prepare.outputs.ref }}
           persist-credentials: false
 
       - name: Prepare to replace the selected release snapshots
         env:
-          VERSION: ${{ needs.generate.outputs.version }}
+          VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           VERSION="${VERSION#v}"
           [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
@@ -88,10 +155,12 @@ jobs:
           path: snapshots
           merge-multiple: true
 
-      - name: Create Draft PR
+      - name: Commit generated snapshots
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ needs.generate.outputs.version }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           ./scripts/check-snapshots
           git add snapshots
@@ -102,13 +171,22 @@ jobs:
           fi
 
           branch="automation/update-snapshots-${VERSION#v}-${GITHUB_RUN_ID}"
-          git switch -c "$branch"
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            git switch -c "$branch"
+          else
+            branch="$HEAD_REF"
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "Update Minilla $VERSION snapshots"
           git -c credential.helper= -c 'credential.helper=!gh auth git-credential' \
-            push origin "$branch"
+            push origin "HEAD:$branch"
+
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            gh workflow run ci.yml --ref "$branch"
+            exit 0
+          fi
 
           gh pr create --draft --title "Update Minilla $VERSION snapshots" \
             --body "Generated on GitHub-hosted Ubuntu and macOS runners using each image's system Perl." \
-            --base "${{ github.event.repository.default_branch }}" --head "$branch"
+            --base "$DEFAULT_BRANCH" --head "$branch"

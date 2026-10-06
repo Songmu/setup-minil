@@ -207,9 +207,10 @@ source commit and SHA-256 digest, along with the Carton bootstrap requirement.
 `.github/workflows/update-snapshots.yml` runs this process on GitHub-hosted
 Ubuntu and macOS runners using each image's system Perl, verifies each
 generated snapshot with a real Minilla installation, and opens a Draft PR
-containing the merged snapshots. Both generation and PR creation check out the
-default branch regardless of the dispatch branch, and use that same default
-branch as the PR base.
+containing the merged snapshots when dispatched manually. Manual dispatch always
+uses the default branch regardless of the dispatch branch, and uses that same
+default branch as the PR base. All jobs use the source commit resolved before
+generation.
 
 Omitting the workflow's version input uses `minilla.version` from the checked-out
 manifest. The resolved version is passed to snapshot verification and PR creation.
@@ -220,8 +221,12 @@ manifest. The resolved version is passed to snapshot verification and PR creatio
 in `runtime/manifest.json`, the Carton requirement in `runtime/cpanfile`, and
 the bundled cpm tag and commit in `runtime/manifest.json`. The cpm update workflow
 refreshes the bundled executable and checksums only when the cpm entry changes.
-Existing snapshots remain records of their exact releases and are not rewritten
-when the default Minilla release changes.
+When a same-repository Renovate PR changes only the default Minilla version and
+snapshots for that release, the snapshot workflow generates and verifies Ubuntu
+and macOS snapshots from the PR head commit. It commits the merged snapshots to
+the same PR branch and dispatches CI. Other runtime changes or unrelated files
+are rejected; PRs without a default Minilla version change skip generation.
+Snapshots for older releases are retained.
 
 ## Continuous integration
 

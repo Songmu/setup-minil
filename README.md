@@ -85,6 +85,9 @@ Minilla release in `runtime/manifest.json`, the exact Carton bootstrap
 requirement in `runtime/cpanfile`, and the bundled cpm tag. A cpm update changes
 its tag and commit in `runtime/manifest.json`; the `Update bundled cpm` workflow
 then refreshes the vendored executable and checksums on the Renovate pull request.
+When Renovate updates the default Minilla release, the `Update snapshots`
+workflow generates and verifies Ubuntu and macOS snapshots, commits them to the
+same pull request, and dispatches CI for the updated branch.
 
 Releases are prepared by tagpr. Merging its release pull request creates a
 SemVer tag and GitHub Release, then the tagpr workflow moves the `v0` tag to
