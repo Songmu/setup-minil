@@ -12,6 +12,26 @@
     "snapshots/**",
     "t/**"
   ],
+  "packageRules": [
+    {
+      "description": "Label bundled cpm updates",
+      "matchPackageNames": [
+        "skaji/cpm"
+      ],
+      "addLabels": [
+        "dependency:cpm"
+      ]
+    },
+    {
+      "description": "Label Minilla updates",
+      "matchPackageNames": [
+        "Minilla"
+      ],
+      "addLabels": [
+        "dependency:minilla"
+      ]
+    }
+  ],
   "customManagers": [
     {
       "customType": "jsonata",

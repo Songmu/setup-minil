@@ -3,7 +3,7 @@ name: Update bundled cpm
 on:
   pull_request:
     types:
-      - opened
+      - labeled
       - reopened
       - synchronize
 
@@ -14,6 +14,8 @@ jobs:
   update:
     if: >-
       github.event.pull_request.user.login == 'renovate[bot]' &&
+      contains(github.event.pull_request.labels.*.name, 'dependency:cpm') &&
+      (github.event.action != 'labeled' || github.event.label.name == 'dependency:cpm') &&
       github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -26,48 +28,12 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
           persist-credentials: false
 
-      - name: Verify the pull request only changes cpm runtime files
-        id: runtime
-        env:
-          BASE_REF: ${{ github.event.pull_request.base.ref }}
-        run: |
-          git fetch --no-tags origin "$BASE_REF"
-
-          base_commit="$(git merge-base "origin/$BASE_REF" HEAD)"
-          base_manifest="$(git show "$base_commit:runtime/manifest.json")"
-          base_cpm="$(jq -cS '.cpm' <<<"$base_manifest")"
-          current_cpm="$(jq -cS '.cpm' runtime/manifest.json)"
-          if [[ "$base_cpm" == "$current_cpm" ]]; then
-            echo "cpm-changed=false" >>"$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          changed_manifest=false
-          while IFS= read -r file; do
-            case "$file" in
-              runtime/manifest.json)
-                changed_manifest=true
-                ;;
-              runtime/cpm)
-                ;;
-              *)
-                echo "Unexpected file in cpm update: $file" >&2
-                exit 1
-                ;;
-            esac
-          done < <(git diff --name-only "origin/$BASE_REF...HEAD")
-
-          test "$changed_manifest" = true
-          echo "cpm-changed=true" >>"$GITHUB_OUTPUT"
-
       - name: Refresh the bundled executable and checksums
-        if: steps.runtime.outputs.cpm-changed == 'true'
         run: |
           ./scripts/update-runtime
           make check
 
       - name: Commit generated runtime files
-        if: steps.runtime.outputs.cpm-changed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
