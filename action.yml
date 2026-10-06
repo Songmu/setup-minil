@@ -8,8 +8,7 @@ branding:
 
 inputs:
   version:
-    description: Exact Minilla CPAN release (vX.Y.Z or X.Y.Z)
-    default: v3.2.0
+    description: Exact Minilla CPAN release (vX.Y.Z or X.Y.Z); defaults to runtime/manifest.json
 
 outputs:
   version:

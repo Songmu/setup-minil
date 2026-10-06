@@ -19,7 +19,7 @@ composite Actionは1つのinputを受け取ります。
 
 | Input | デフォルト | 説明 |
 |---|---|---|
-| `version` | `v3.2.0` | `vX.Y.Z`または`X.Y.Z`形式の正確なMinilla release |
+| `version` | `runtime/manifest.json`の`minilla.version` | `vX.Y.Z`または`X.Y.Z`形式の正確なMinilla release |
 
 1つのoutputを公開します。
 
@@ -76,6 +76,8 @@ Actionはjob全体の`PERL5LIB`を設定しないため、後続の無関係なs
 
 ## versionの選択
 
+inputが省略された場合や空の場合は、`runtime/manifest.json`の`minilla.version`を使用します。この値は`vX.Y.Z`形式の正確なreleaseである必要があります。inputを明示した場合はmanifestのデフォルトより優先します。
+
 inputは先頭の`v`の有無を問わず、3つの数値からなる正確なversionを受け付けます。要求されたMinilla versionはcpmがCPANから解決します。該当releaseが見つからない場合やinstallできない場合はActionを失敗させます。
 
 Actionではreleaseのallowlist管理、tarballの直接download、独自のrelease digest検証は行いません。downloadと依存関係の解決はcpmへ委ねます。
@@ -123,11 +125,12 @@ Carton distributionのversionは固定します。Carton snapshot自体を読み
 
 ## bundled runtime
 
-repositoryにはself-containedなcpmを`runtime/cpm`として同梱します。`runtime/manifest.json`にはcpmの取得元commitとSHA-256 digest、およびCartonのbootstrap要件を記録します。
+repositoryにはself-containedなcpmを`runtime/cpm`として同梱します。`runtime/manifest.json`にはMinillaのデフォルトreleaseを定義し、cpmの取得元commitとSHA-256 digest、およびCartonのbootstrap要件を記録します。
 
 `scripts/check-runtime`は次の項目を検証します。
 
 - bundled cpmのdigest
+- Minillaのデフォルトversionの形式
 - Cartonの正確な要求versionとcpanfileのdigest
 - vendored Carton library treeやbootstrap snapshotがcommitされていないこと
 
@@ -146,6 +149,13 @@ repositoryにはself-containedなcpmを`runtime/cpm`として同梱します。`
 7. `scripts/check-snapshots`を実行する。
 
 `.github/workflows/update-snapshots.yml`はGitHub-hosted UbuntuおよびmacOS runner上で、それぞれのimageに含まれるsystem Perlを使用してこの処理を実行します。生成された各snapshotを実際のMinilla installで検証し、snapshotをまとめたDraft PRを作成します。snapshot生成とPR作成の両jobは、dispatchで選択したbranchに関係なくdefault branchをcheckoutし、同じdefault branchをPRのbaseとします。
+
+workflowのversion inputを省略した場合は、checkoutしたmanifestの`minilla.version`を使用します。解決したversionはsnapshotの検証とPR作成にも引き継ぎます。
+
+## 依存関係の更新
+
+`.github/renovate.json5`でRenovateを設定し、`runtime/manifest.json`のMinillaのデフォルトrelease、`runtime/cpanfile`のCarton要件、`runtime/manifest.json`のbundled cpmのtagとcommitを更新します。cpm更新workflowはcpmの項目が変わった場合にのみ、同梱実行ファイルとchecksumを更新します。
+既存のsnapshotは各releaseの記録として残し、Minillaのデフォルトreleaseを変更しても書き換えません。
 
 ## 継続的integration
 

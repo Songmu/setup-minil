@@ -7,7 +7,7 @@ use SetupMinil;
 use File::Path     qw(make_path remove_tree);
 use File::Temp     ();
 
-my $env      = environment( $ENV{INPUT_VERSION} || 'v3.2.0' );
+my $env      = environment( $ENV{INPUT_VERSION} || default_version() );
 my $version  = $env->{minilla_version};
 my $snapshot = "$SetupMinil::ROOT/snapshots/" . snapshot_path($env);
 my $mode     = -d $snapshot ? 'snapshot' : 'dynamic';

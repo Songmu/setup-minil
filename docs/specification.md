@@ -19,7 +19,7 @@ The composite Action accepts one input:
 
 | Input | Default | Description |
 |---|---|---|
-| `version` | `v3.2.0` | Exact Minilla release in `vX.Y.Z` or `X.Y.Z` form |
+| `version` | `minilla.version` in `runtime/manifest.json` | Exact Minilla release in `vX.Y.Z` or `X.Y.Z` form |
 
 It exposes one output:
 
@@ -109,6 +109,10 @@ the caller's existing Perl environment.
 
 ## Version selection
 
+When the input is omitted or empty, the Action reads `minilla.version` from
+`runtime/manifest.json`. This must be an exact release in `vX.Y.Z` form.
+An explicit input takes precedence over the manifest default.
+
 The input accepts exact three-component versions with or without the leading
 `v`. cpm resolves the requested Minilla version from CPAN. If the requested
 release cannot be found or installed, the Action fails.
@@ -172,12 +176,13 @@ removed. A completed Minilla installation remains in the Runner Tool Cache.
 ## Bundled runtime
 
 The repository bundles self-contained cpm in `runtime/cpm`.
-`runtime/manifest.json` records its source commit and SHA-256 digest, along
-with the Carton bootstrap requirement.
+`runtime/manifest.json` defines the default Minilla release and records cpm's
+source commit and SHA-256 digest, along with the Carton bootstrap requirement.
 
 `scripts/check-runtime` verifies:
 
 - the bundled cpm digest
+- the default Minilla version format
 - the exact Carton requirement and cpanfile digest
 - that no vendored Carton library tree or bootstrap snapshot is committed
 
@@ -205,6 +210,18 @@ generated snapshot with a real Minilla installation, and opens a Draft PR
 containing the merged snapshots. Both generation and PR creation check out the
 default branch regardless of the dispatch branch, and use that same default
 branch as the PR base.
+
+Omitting the workflow's version input uses `minilla.version` from the checked-out
+manifest. The resolved version is passed to snapshot verification and PR creation.
+
+## Dependency updates
+
+`.github/renovate.json5` configures Renovate to update the default Minilla release
+in `runtime/manifest.json`, the Carton requirement in `runtime/cpanfile`, and
+the bundled cpm tag and commit in `runtime/manifest.json`. The cpm update workflow
+refreshes the bundled executable and checksums only when the cpm entry changes.
+Existing snapshots remain records of their exact releases and are not rewritten
+when the default Minilla release changes.
 
 ## Continuous integration
 

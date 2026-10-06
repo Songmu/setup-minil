@@ -5,7 +5,7 @@ readonly ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 
 temp_root="$(mktemp -d)"
 trap 'rm -rf -- "$temp_root"' EXIT
-test_version="${INPUT_VERSION:-v3.2.0}"
+test_version="${INPUT_VERSION:-$(perl -I "$ROOT/scripts" -MSetupMinil -e 'print default_version()')}"
 test_version="v${test_version#v}"
 
 if [[ -z "${SETUP_MINIL_BIN:-}" ]]; then

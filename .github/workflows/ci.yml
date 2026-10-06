@@ -41,16 +41,24 @@ jobs:
         with:
           perl-version: "5.40"
 
+      - name: Read the default Minilla version
+        id: version
+        run: perl -I scripts -MSetupMinil -e 'output("version", default_version())'
+
       - name: Generate an exact dependency snapshot
         if: matrix.resolution == 'snapshot'
-        run: ./scripts/update-snapshots v3.2.0
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: ./scripts/update-snapshots "$VERSION"
 
       - name: Verify the committed snapshot matches the selected Perl
         if: matrix.resolution == 'committed-snapshot'
         shell: bash
+        env:
+          INPUT_VERSION: ${{ steps.version.outputs.version }}
         run: |
           perl -I scripts -MSetupMinil -e '
-            my $env = environment("v3.2.0");
+            my $env = environment($ENV{INPUT_VERSION});
             check_snapshot("./snapshots/" . snapshot_path($env), $env);
           '
 
@@ -66,8 +74,9 @@ jobs:
         env:
           EXPECTED_PERL5LIB: ${{ steps.perl-env.outputs.perl5lib }}
           EXPECTED_RESOLUTION_MODE: ${{ matrix.resolution == 'dynamic' && 'dynamic' || 'snapshot' }}
+          EXPECTED_VERSION: ${{ steps.version.outputs.version }}
         run: |
-          test '${{ steps.setup.outputs.version }}' = 'v3.2.0'
+          test '${{ steps.setup.outputs.version }}' = "$EXPECTED_VERSION"
           test "${PERL5LIB-}" = "$EXPECTED_PERL5LIB"
           SETUP_MINIL_BIN="$(dirname "$(command -v minil)")" ./t/smoke.sh
 

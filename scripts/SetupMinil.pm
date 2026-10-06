@@ -7,15 +7,14 @@ use Digest::SHA qw(sha256_hex);
 use Exporter 'import';
 use File::Basename qw(dirname);
 use File::Path     qw(make_path);
-use FindBin;
 use JSON::PP qw(decode_json);
 
 our @EXPORT = qw(
   read_file write_file digest
   run run_in run_quiet cpm
-  environment snapshot_path check_snapshot output
+  default_version environment snapshot_path check_snapshot output
 );
-our $ROOT = abs_path("$FindBin::Bin/..");
+our $ROOT = abs_path( dirname(__FILE__) . '/..' );
 our $PERL = abs_path( $^X =~ m{/} ? $^X : $Config{perlpath} )
   or die "cannot locate selected Perl\n";
 
@@ -76,6 +75,15 @@ sub cpm {
         '--no-prebuilt',
         '--no-test',
     );
+}
+
+sub default_version {
+    my $manifest = decode_json( read_file("$ROOT/runtime/manifest.json") );
+    ref $manifest eq 'HASH' && ref $manifest->{minilla} eq 'HASH'
+      && defined $manifest->{minilla}{version} && !ref $manifest->{minilla}{version}
+      && $manifest->{minilla}{version} =~ /^v\d+\.\d+\.\d+\z/
+      or die "invalid default Minilla version in runtime/manifest.json (expected vX.Y.Z)\n";
+    return $manifest->{minilla}{version};
 }
 
 sub environment {

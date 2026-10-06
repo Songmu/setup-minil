@@ -23,6 +23,9 @@ for my $file (qw(cpanfile minilla.cpanfile)) {
     cp( "$SetupMinil::ROOT/runtime/$file", "$root/runtime/$file" ) or die $!;
 }
 cp( "$SetupMinil::ROOT/t/cpm-fixture", "$root/runtime/cpm" ) or die $!;
+my $manifest_path = "$root/runtime/manifest.json";
+# Fixture versions do not track Renovate-managed runtime releases.
+write_file( $manifest_path, '{"minilla":{"version":"v3.2.0"}}' );
 
 my %fixture_environment = (
     RUNNER_OS         => 'Linux',
@@ -204,5 +207,38 @@ like(
     'snapshot-only resolution'
 );
 like( read_file("$root/output"), qr/resolution-mode=snapshot/, 'snapshot output' );
+
+subtest 'manifest version selection' => sub {
+    local $ENV{RUNNER_TOOL_CACHE} = "$root/version-cache";
+    local $ENV{CPM_LOG}           = "$root/version-cpm-log";
+    local $ENV{GITHUB_PATH}       = "$root/version-path";
+    local $ENV{GITHUB_OUTPUT}     = "$root/version-output";
+    my $original = read_file($manifest_path);
+    write_file( $manifest_path, '{"minilla":{"version":"v9.8.7"}}' );
+
+    my ( $status, $version ) =
+      invoke( '-I', "$root/scripts", '-MSetupMinil', '-e', 'print default_version()' );
+    is( $status, 0, 'read default from a Perl one-liner' );
+    is( $version, 'v9.8.7', 'read the fixture manifest rather than the repository default' );
+
+    for my $case (
+        [ undef,   'v9.8.7', 'omitted input uses manifest default' ],
+        [ '',      'v9.8.7', 'empty input uses manifest default' ],
+        [ '1.2.3', 'v1.2.3', 'explicit input overrides manifest default' ],
+      )
+    {
+        my ( $input, $expected, $description ) = @$case;
+        local $ENV{INPUT_VERSION} = $input;
+        write_file( $ENV{GITHUB_OUTPUT}, '' );
+        succeeds($setup);
+        like( read_file($ENV{GITHUB_OUTPUT}), qr/^version=\Q$expected\E$/m, $description );
+    }
+
+    for my $invalid ( {}, { minilla => { version => 'latest' } } ) {
+        write_file( $manifest_path, JSON::PP->new->encode($invalid) );
+        rejects( qr/invalid default Minilla version/, $setup );
+    }
+    write_file( $manifest_path, $original );
+};
 
 done_testing;
