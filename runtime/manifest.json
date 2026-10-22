@@ -7,7 +7,7 @@
    },
    "cpm" : {
       "commit" : "ea08d4b1f050b4defe889068526cf997d5e77964",
-      "sha256" : "0000000000000000000000000000000000000000000000000000000000000000",
+      "sha256" : "2f85dea9272722d518297a3baa13a85ac7a9bbb18c0b529bd29eb7ccbf23c734",
       "source" : "https://raw.githubusercontent.com/skaji/cpm/ea08d4b1f050b4defe889068526cf997d5e77964/cpm",
       "version" : "v1.1.6"
    },
